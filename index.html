@@ -3,331 +3,187 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VLC Player v3</title>
+<title>VLC Local Player</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          vlc: {
-            bg: "#0d0d0f",
-            bg2: "#141417",
-            srf: "#1a1a1e",
-            srf2: "#252529",
-            srf3: "#333338",
-            orange: "#ff6a00",
-            orange2: "#ff8a1e",
-            danger: "#ff4538",
-          },
-        },
-        fontFamily: {
-          sans: [
-            "-apple-system",
-            "BlinkMacSystemFont",
-            "Segoe UI",
-            "Roboto",
-            "sans-serif",
-          ],
-        },
-      },
-    },
-  };
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        vlc: {
+          bg:'#0d0d0f', bg2:'#141417', srf:'#1a1a1e', srf2:'#252529',
+          srf3:'#333338', orange:'#ff6a00', orange2:'#ff8a1e', danger:'#ff4538'
+        }
+      }
+    }
+  }
+}
 </script>
-
 <style>
-/* Only 3 things Tailwind can't do cleanly */
-
-/* Custom scrollbar */
-.custom-scroll::-webkit-scrollbar {
-  width: 3px;
-}
-.custom-scroll::-webkit-scrollbar-thumb {
-  background: #333338;
-  border-radius: 2px;
-}
-
-/* Seek dot — appears only on parent hover */
-.seek-container:hover .seek-dot {
-  opacity: 1;
-}
-.seek-container:hover .seek-bar {
-  height: 6px;
-}
-
-/* Spinner */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.spin {
-  animation: spin 0.75s linear infinite;
-}
-
-/* Flash animation */
-@keyframes flashOut {
-  0% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-.flash-go {
-  animation: flashOut 0.45s ease-out forwards;
-}
-
-/* Range input */
-input[type="range"] {
-  -webkit-appearance: none;
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 2px;
-  height: 4px;
-  outline: none;
-  cursor: pointer;
-}
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 11px;
-  height: 11px;
-  background: #fff;
-  border-radius: 50%;
-  cursor: pointer;
-}
-input[type="range"]::-moz-range-thumb {
-  width: 11px;
-  height: 11px;
-  background: #fff;
-  border-radius: 50%;
-  border: none;
-}
-
-/* Button controls */
-.btn-ctrl {
-  background: transparent;
-  border: none;
-  color: white;
-  cursor: pointer;
-  padding: 0.375rem;
-  border-radius: 0.375rem;
-  font-size: 17px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-.btn-ctrl:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-.btn-ctrl:active {
-  transform: scale(0.9);
-}
-.btn-ctrl.on {
-  color: #ff6a00;
-}
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#333338;border-radius:2px}
+  /* seek bar hover effects */
+  .seek-wrap:hover .seek-bar{height:6px}
+  .seek-wrap:hover .seek-dot{opacity:1}
+  /* file row: show action button on hover */
+  .file-row:hover .row-act{opacity:1}
+  /* range input */
+  input[type=range]{-webkit-appearance:none;height:4px;background:rgba(255,255,255,.2);border-radius:2px;outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;background:#fff;border-radius:50%}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;background:#fff;border-radius:50%;border:none}
+  /* FIX 7: dark background for select option elements */
+  select option{background:#252529;color:#f0f0f5}
+  /* animations */
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes flashOut{0%{opacity:1}100%{opacity:0}}
+  .spin{animation:spin .75s linear infinite}
+  .flash-go{animation:flashOut .4s ease-out forwards}
+  /* toggled via JS — DO NOT use Tailwind 'hidden' class for these */
+  .tinfo.vis{display:block}
+  .osd.on{opacity:1!important}
+  .btn.on{color:#ff6a00!important}
 </style>
 </head>
-<body class="flex flex-col h-screen overflow-hidden bg-vlc-bg text-white text-[13px] select-none">
+<body class="bg-vlc-bg text-white h-screen overflow-hidden flex flex-col select-none text-[13px]">
 
 <!-- TOPBAR -->
-<div class="h-11 bg-vlc-srf border-b border-white/5 flex items-center px-3.5 gap-2.5 flex-shrink-0">
-  <div class="flex items-center gap-1.5 py-1 px-2.5 py-1 bg-gradient-to-br from-vlc-orange to-vlc-orange2 rounded-full font-bold text-[12px] text-white flex-shrink-0">
-    ▶ VLC
-  </div>
-  <div class="font-semibold text-[14px] flex-shrink-0">Local Video Player</div>
-  <div class="flex-1 text-[12px] text-vlc-srf3 overflow-hidden text-ellipsis whitespace-nowrap px-1" id="topNow">
-    No file loaded
-  </div>
-  <span class="hidden bg-vlc-srf2 border border-white/7 text-vlc-srf2 text-[10px] font-bold tracking-[0.6px] px-2 py-0.5 rounded-md uppercase flex-shrink-0" id="extPill"></span>
+<div class="h-11 bg-vlc-srf border-b border-white/5 flex items-center px-4 gap-3 flex-shrink-0">
+  <div class="flex items-center gap-1.5 bg-gradient-to-r from-vlc-orange to-vlc-orange2 px-3 py-1 rounded-full text-xs font-bold text-white flex-shrink-0">&#9654; VLC</div>
+  <span class="font-semibold text-sm flex-shrink-0">Local Player</span>
+  <div id="topNow" class="flex-1 text-xs text-white/30 overflow-hidden text-ellipsis whitespace-nowrap px-2">No file loaded</div>
+  <!-- FIX 1: use style="display:none" NOT class="hidden" for JS-toggled elements -->
+  <span id="extPill"     style="display:none" class="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-vlc-srf2 border border-white/10 text-white/50"></span>
+  <span id="folderBadge" style="display:none" class="text-[10px] text-vlc-orange/70 bg-vlc-orange/10 border border-vlc-orange/20 px-2 py-0.5 rounded font-medium max-w-[140px] truncate"></span>
 </div>
 
 <!-- LAYOUT -->
 <div class="flex flex-1 min-h-0">
 
-  <!-- LEFT SIDEBAR -->
-  <aside class="w-[272px] flex-shrink-0 bg-vlc-srf border-r border-white/7 flex flex-col overflow-hidden">
+  <!-- SIDEBAR -->
+  <aside class="w-72 flex-shrink-0 bg-vlc-srf border-r border-white/5 flex flex-col overflow-hidden">
 
-    <!-- BROWSE PC SECTION -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <div class="p-3 space-y-2">
-        <div class="flex gap-2">
-          <input
-            id="dirInput"
-            type="text"
-            placeholder="C:\Users\YourName\Videos"
-            class="flex-1 bg-vlc-srf2 border border-white/10 rounded-lg px-3 py-2 text-xs text-white
-                   placeholder-vlc-srf3 outline-none focus:border-vlc-orange/50"
-          />
-          <button
-            onclick="browseDir()"
-            id="btnBrowse"
-            class="px-3 py-2 bg-vlc-orange rounded-lg text-xs font-semibold text-white hover:bg-vlc-orange2
-                   transition-colors whitespace-nowrap"
-          >
-            Scan
-          </button>
-        </div>
-
-        <!-- Quick path shortcuts -->
-        <div class="flex flex-wrap gap-1">
-          <button
-            onclick="quickPath('desktop')"
-            class="px-2 py-1 bg-vlc-srf2 rounded text-[10px] text-vlc-srf3 hover:text-white hover:bg-vlc-srf3 transition-colors"
-          >
-            Desktop
-          </button>
-          <button
-            onclick="quickPath('downloads')"
-            class="px-2 py-1 bg-vlc-srf2 rounded text-[10px] text-vlc-srf3 hover:text-white hover:bg-vlc-srf3 transition-colors"
-          >
-            Downloads
-          </button>
-          <button
-            onclick="quickPath('videos')"
-            class="px-2 py-1 bg-vlc-srf2 rounded text-[10px] text-vlc-srf3 hover:text-white hover:bg-vlc-srf3 transition-colors"
-          >
-            Videos
-          </button>
-        </div>
-
-        <div id="browseStatus" class="text-[11px] text-vlc-srf3 text-center hidden">
-          Scanning…
-        </div>
-        <div id="browseList" class="space-y-0.5"></div>
+    <!-- FOLDER INPUT -->
+    <div class="p-3 flex-shrink-0 border-b border-white/5 space-y-2">
+      <div class="text-[10px] font-bold tracking-widest uppercase text-white/30">&#128193; Video Folder</div>
+      <div class="flex gap-2">
+        <input id="pathInput" type="text" placeholder="Scanning your Videos folder..."
+          class="flex-1 bg-vlc-srf2 border border-white/10 rounded-lg px-3 py-2 text-xs text-white
+                 placeholder-white/20 outline-none focus:border-vlc-orange/50 transition-colors min-w-0">
+        <button onclick="scanFolder()"
+          class="px-3 py-2 bg-vlc-orange hover:bg-vlc-orange2 rounded-lg text-xs font-bold text-white transition-colors flex-shrink-0">Scan</button>
       </div>
+      <!-- FIX 8: quickPath now calls /homedir to get actual user home -->
+      <div class="flex gap-1.5">
+        <button onclick="quickPath('desktop')"   class="px-2 py-1 text-[10px] rounded bg-vlc-srf3 text-white/40 hover:text-white hover:bg-white/10 transition-colors">Desktop</button>
+        <button onclick="quickPath('downloads')" class="px-2 py-1 text-[10px] rounded bg-vlc-srf3 text-white/40 hover:text-white hover:bg-white/10 transition-colors">Downloads</button>
+        <button onclick="quickPath('videos')"    class="px-2 py-1 text-[10px] rounded bg-vlc-srf3 text-white/40 hover:text-white hover:bg-white/10 transition-colors">Videos</button>
+      </div>
+      <div id="scanStatus" class="text-[11px] text-white/30 min-h-[16px]"></div>
+    </div>
+
+    <!-- RECENT FOLDERS: FIX 1 — style="display:none" not hidden class -->
+    <div id="recentList" style="display:none" class="border-b border-white/5 flex-shrink-0 max-h-32 overflow-y-auto">
+      <div class="px-3 pt-1.5 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-white/20">Recent</div>
+      <!-- items rendered by renderRecent() -->
+    </div>
+
+    <!-- FILE LIST HEADER -->
+    <div class="flex items-center justify-between px-3 py-2 bg-vlc-bg2 border-b border-white/5 flex-shrink-0">
+      <span class="text-[10px] font-bold uppercase tracking-widest text-white/30">Library</span>
+      <span id="fileCount" class="text-[11px] text-white/30 bg-vlc-srf2 px-2 py-0.5 rounded-full">0</span>
+    </div>
+
+    <!-- FILE LIST: FIX 2 — uses event delegation, data-path / data-name attrs -->
+    <div id="fileList" class="flex-1 overflow-y-auto p-1">
+      <div class="text-center py-10 text-white/20 text-xs leading-loose">Enter a folder path above<br>and click Scan.</div>
     </div>
   </aside>
 
-  <!-- VIDEO MAIN -->
-  <div class="vmain flex-1 flex flex-col bg-black min-w-0 relative" id="vmain">
-
-    <!-- VIDEO WRAP -->
-    <div class="vwrap flex-1 relative flex items-center justify-center bg-black overflow-hidden" id="vwrap">
-      <video id="vid" class="max-w-full max-h-full w-full h-full object-contain block" preload="none"></video>
+  <!-- VIDEO AREA -->
+  <div id="vmain" class="flex-1 flex flex-col bg-black min-w-0">
+    <div id="vwrap" class="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
+      <video id="vid" preload="none" class="max-w-full max-h-full w-full h-full object-contain block"></video>
 
       <!-- Placeholder -->
-      <div class="v-ph absolute inset-0 flex flex-col items-center justify-center gap-2.5 pointer-events-none" id="vph">
-        <div class="v-ph-icon text-[60px] opacity-15">🎬</div>
-        <div class="v-ph-txt text-vlc-srf3 text-[14px] text-center leading-relaxed">
-          Select a video from the sidebar<br>or upload a new file
-        </div>
+      <div id="vph" class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+        <div class="text-6xl opacity-10">&#127916;</div>
+        <div class="text-white/20 text-sm text-center leading-relaxed">Scan a folder and click a video to play</div>
       </div>
 
-      <!-- Loading overlay -->
-      <div class="v-load absolute inset-0 bg-black/72 flex flex-col items-center justify-center gap-3 z-[5] hidden" id="vload">
-        <div class="spinner w-[34px] h-[34px] border-[3px] border-vlc-orange/20 border-t-vlc-orange rounded-full spin"></div>
-        <div class="v-load-txt text-vlc-srf2 text-[13px]" id="vloadTxt">Preparing stream…</div>
+      <!-- Loading: FIX 1 — style="display:none" not Tailwind hidden -->
+      <div id="vload" style="display:none" class="absolute inset-0 bg-black/75 flex-col items-center justify-center gap-3 z-[5]">
+        <div class="w-9 h-9 rounded-full border-[3px] border-vlc-orange/20 border-t-vlc-orange spin"></div>
+        <div id="vloadTxt" class="text-white/60 text-sm">Loading…</div>
       </div>
 
-      <!-- Play flash overlay -->
-      <div class="vflash absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 z-[6]" id="vflash">
-        <div class="flash-disc w-[62px] h-[62px] bg-black/55 rounded-full flex items-center justify-center text-[24px]" id="flashDisc">▶</div>
+      <!-- Click-to-play: FIX 1 — style="display:none" not Tailwind hidden -->
+      <div id="clickToPlay" style="display:none" class="absolute inset-0 bg-black/75 flex-col items-center justify-center gap-4 z-[10] cursor-pointer">
+        <div class="w-20 h-20 bg-vlc-orange hover:bg-vlc-orange2 rounded-full flex items-center justify-center text-3xl shadow-[0_0_40px_rgba(255,106,0,.5)] transition-colors">&#9654;</div>
+        <div class="text-white/60 text-sm">Click to play with audio</div>
+      </div>
+
+      <!-- Flash -->
+      <div id="vflash" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 z-[6]">
+        <div id="flashDisc" class="w-16 h-16 bg-black/60 rounded-full flex items-center justify-center text-2xl">&#9654;</div>
       </div>
 
       <!-- OSD -->
-      <div class="osd absolute top-3.5 right-3.5 bg-black/72 text-white px-3 py-1.5 rounded-lg text-[13px] pointer-events-none opacity-0 transition-opacity duration-250 z-[8] max-w-[220px] backdrop-blur-md border border-white/7" id="osd"></div>
+      <div id="osd" class="absolute top-4 right-4 bg-black/75 text-white px-3 py-1.5 rounded-lg text-sm pointer-events-none opacity-0 transition-opacity z-[8] max-w-[220px] backdrop-blur-sm border border-white/10"></div>
 
-      <!-- Media info panel -->
-      <div class="tinfo absolute right-3.5 bottom-[106px] w-[228px] bg-vlc-bg/93 backdrop-blur-xl border border-white/7 rounded-xl p-3.5 z-[9] hidden" id="tinfo">
-        <div class="tinfo-hd text-[10px] font-bold uppercase tracking-[0.8px] text-vlc-srf3 mb-2.5">📊 Media Info</div>
+      <!-- Media Info Panel: FIX 1 — tinfo uses .vis CSS class, not Tailwind hidden -->
+      <div id="tinfo" class="absolute right-4 bottom-24 w-56 bg-vlc-bg/95 backdrop-blur-xl border border-white/10 rounded-xl p-3.5 z-[9]" style="display:none">
+        <div class="text-[9px] font-bold uppercase tracking-[1px] text-white/30 mb-2.5">&#128202; Media Info</div>
         <div id="tinfoRows"></div>
       </div>
     </div>
 
     <!-- CONTROLS -->
-    <div class="ctrls flex-shrink-0 bg-gradient-to-t from-black/96 to-black/70 px-4 pt-2 pb-2.5 border-t border-white/4">
-
+    <div class="flex-shrink-0 bg-gradient-to-t from-black/95 to-black/70 px-4 pt-2 pb-3 border-t border-white/[0.04]">
       <!-- Seek bar -->
-      <div class="px-4 pt-2 pb-1">
-        <div class="seek-container relative h-4 flex items-center cursor-pointer group" id="seekRow">
-          <div class="seek-bar relative w-full h-1 bg-white/10 rounded-full transition-all duration-100" id="sbar">
-            <div id="sbuf" class="absolute top-0 left-0 h-full bg-white/20 rounded-full pointer-events-none"></div>
-            <div id="splayed" class="absolute top-0 left-0 h-full bg-vlc-orange rounded-full pointer-events-none"></div>
-            <div id="sdot" class="seek-dot absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full opacity-0 transition-opacity shadow-lg pointer-events-none"></div>
-          </div>
-          <div id="stip" class="absolute -top-6 -translate-x-1/2 bg-black/80 text-white text-[11px] px-2 py-0.5 rounded-md pointer-events-none opacity-0 whitespace-nowrap group-hover:opacity-100">0:00</div>
+      <div class="seek-wrap relative flex items-center h-5 cursor-pointer mb-2">
+        <div class="seek-bar relative w-full h-1 bg-white/10 rounded-full transition-all duration-100" id="sbar">
+          <div id="sbuf"    class="absolute inset-y-0 left-0 bg-white/20 rounded-full pointer-events-none" style="width:0"></div>
+          <div id="splayed" class="absolute inset-y-0 left-0 bg-vlc-orange rounded-full pointer-events-none" style="width:0"></div>
+          <div id="sdot"    class="seek-dot absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full opacity-0 transition-opacity shadow-lg pointer-events-none" style="left:0"></div>
         </div>
+        <div id="stip" class="absolute -top-7 -translate-x-1/2 bg-black/85 text-white text-[11px] px-2 py-0.5 rounded pointer-events-none whitespace-nowrap" style="opacity:0;left:0">0:00</div>
       </div>
 
       <!-- Button row -->
-      <div class="flex items-center gap-0.5 px-3 pb-2.5">
-        <!-- Transport controls -->
-        <button id="btnPlay" class="btn-ctrl text-xl" title="Play/Pause (Space)">▶</button>
-        <button id="btnStop" class="btn-ctrl" title="Stop (S)">⏹</button>
-        <button id="btnRew" class="btn-ctrl" title="-10s (←)">⏪</button>
-        <button id="btnFwd" class="btn-ctrl" title="+10s (→)">⏩</button>
+      <div class="flex items-center gap-0.5">
+        <button id="btnPlay" class="btn p-1.5 rounded-lg text-xl hover:bg-white/10 active:scale-90 transition-all">&#9654;</button>
+        <button id="btnStop" class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 active:scale-90 transition-all">&#9209;</button>
+        <button id="btnRew"  class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 active:scale-90 transition-all" title="-10s (←)">&#9194;</button>
+        <button id="btnFwd"  class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 active:scale-90 transition-all" title="+10s (→)">&#9193;</button>
 
         <div class="w-px h-4 bg-white/10 mx-1 flex-shrink-0"></div>
 
-        <!-- Volume -->
-        <button id="btnMute" class="btn-ctrl" title="Mute (M)">🔊</button>
-        <input type="range" id="volRange" class="w-16 mx-1" min="0" max="1" step="0.05" value="1" />
+        <button id="btnMute" class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 active:scale-90 transition-all">&#128266;</button>
+        <input id="volRange" type="range" class="w-16 mx-1" min="0" max="1" step="0.05" value="1">
 
-        <!-- Time -->
-        <div class="text-xs text-white/50 tabular-nums mx-2 whitespace-nowrap flex-shrink-0">
-          <span class="text-white" id="timeCur">0:00</span>
-          <span> / </span>
-          <span id="timeTot">0:00</span>
+        <div class="text-xs text-white/40 tabular-nums mx-2 whitespace-nowrap flex-shrink-0">
+          <span class="text-white" id="timeCur">0:00</span><span class="mx-0.5">/</span><span id="timeTot">0:00</span>
         </div>
 
-        <!-- Right side controls -->
         <div class="ml-auto flex items-center gap-1">
-          <!-- Audio track selector -->
-          <div id="audWrap" class="hidden items-center gap-1.5 bg-vlc-srf2 border border-white/10 rounded-lg px-2.5 py-1">
-            <span class="text-[13px]">🎵</span>
-            <span class="text-[11px] text-white/50">Audio:</span>
-            <select id="audSel" class="bg-transparent border-none text-white text-xs outline-none cursor-pointer max-w-[130px]"></select>
+          <!-- FIX 1: audWrap uses style="display:none" not Tailwind hidden -->
+          <div id="audWrap" style="display:none" class="items-center gap-1.5 bg-vlc-srf2 border border-white/10 rounded-lg px-2.5 py-1.5">
+            <span class="text-xs">&#127925;</span>
+            <span class="text-[11px] text-white/40">Audio:</span>
+            <select id="audSel" class="bg-transparent border-none text-white text-xs outline-none cursor-pointer max-w-[120px]"></select>
           </div>
-
           <div class="w-px h-4 bg-white/10 mx-0.5 flex-shrink-0"></div>
-
-          <!-- Speed -->
-          <select id="spdSel" title="Playback speed" class="bg-vlc-srf2 border border-white/10 text-white text-xs px-2 py-1 rounded-lg cursor-pointer outline-none appearance-none">
-            <option value="0.25">0.25×</option>
-            <option value="0.5">0.5×</option>
-            <option value="0.75">0.75×</option>
-            <option value="1" selected>1×</option>
-            <option value="1.25">1.25×</option>
-            <option value="1.5">1.5×</option>
-            <option value="2">2×</option>
-            <option value="3">3×</option>
+          <select id="spdSel" class="bg-vlc-srf2 border border-white/10 text-white text-xs px-2 py-1.5 rounded-lg cursor-pointer outline-none appearance-none">
+            <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+            <option value="2">2×</option><option value="3">3×</option>
           </select>
-
-          <button id="btnLoop" class="btn-ctrl" title="Loop (L)">🔁</button>
-          <button id="btnInfo" class="btn-ctrl" title="Media info (I)">ℹ</button>
-          <button id="btnFs" class="btn-ctrl" title="Fullscreen (F)">⛶</button>
+          <button id="btnLoop" class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 transition-all">&#128257;</button>
+          <button id="btnInfo" class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 transition-all">&#8505;</button>
+          <button id="btnFs"   class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 transition-all">&#9974;</button>
         </div>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- PLAYLIST PANEL -->
-<div id="plPanel" class="flex-shrink-0 bg-vlc-srf border-t border-white/5 transition-all duration-200" style="height: 180px">
-
-  <!-- Header -->
-  <div class="flex items-center gap-1.5 px-3 h-9 border-b border-white/5 flex-shrink-0">
-    <span class="text-[10px] font-bold tracking-widest uppercase text-white/40">Playlist</span>
-    <span id="plCount" class="text-[10px] px-1.5 py-0.5 rounded-full bg-vlc-srf2 text-white/40">0</span>
-
-    <div class="ml-2 flex items-center gap-0.5">
-      <button onclick="playPrev()" class="btn-ctrl !text-sm" title="Previous">⏮</button>
-      <button onclick="playNext()" class="btn-ctrl !text-sm" title="Next">⏭</button>
-      <button id="btnShuffle" onclick="toggleShuffle()" class="btn-ctrl !text-xs font-bold px-2 py-1 rounded" title="Shuffle">🔀</button>
-      <button id="btnRepeat" onclick="cycleRepeat()" class="btn-ctrl !text-xs font-bold px-2 py-1 rounded" title="Repeat">🔁 Off</button>
-      <button onclick="clearPlaylist()" class="btn-ctrl !text-xs text-vlc-srf3 hover:text-vlc-danger px-2" title="Clear playlist">🗑</button>
-    </div>
-
-    <button id="btnPlToggle" onclick="togglePlaylist()" class="ml-auto btn-ctrl !text-xs" title="Toggle playlist">∨</button>
-  </div>
-
-  <!-- Playlist items -->
-  <div id="plList" class="overflow-y-auto custom-scroll" style="height: calc(180px - 36px)">
-    <div class="text-center py-4 text-vlc-srf3 text-xs">
-      No items. Add videos using the [+] button.
     </div>
   </div>
 </div>
@@ -335,750 +191,362 @@ input[type="range"]::-moz-range-thumb {
 <script>
 'use strict';
 
-/* STATE */
+/* ── STATE ────────────────────────────────────────────────────────────────── */
 const S = {
-  // Player
-  file: null,
-  filePath: null,
-  isLocal: false,
-  info: null,
-  duration: 0,
-  audioIdx: 0,
-  offset: 0,
-  looping: false,
-  showInfo: false,
-  osdTimer: null,
-  audioCtxUnlocked: false, // for user gesture tracking
-
-  // Playlist
-  playlist: [],
-  plIndex: -1,
-  shuffle: false,
-  repeat: "off",
-  plOpen: true,
-
-  // Browse PC
-  browseDir: "",
-  browseFiles: [],
+  filePath:null, fileName:null, isDirect:false,
+  info:null, duration:0, audioIdx:0, offset:0,
+  looping:false, showInfo:false, osdTimer:null,
+  recentDirs:[], homePath:'',
 };
+const $ = id => document.getElementById(id);
+const vid = $('vid');
 
-/* UTILS */
-const $ = (id) => document.getElementById(id);
-const vid = $('vid'),
-  vph = $('vph'),
-  vload = $('vload'),
-  vloadTxt = $('vloadTxt'),
-  vflash = $('vflash'),
-  flashDisc = $('flashDisc'),
-  osdEl = $('osd');
-const tinfo = $('tinfo'),
-  tinfoRows = $('tinfoRows');
-const btnPlay = $('btnPlay'),
-  btnStop = $('btnStop'),
-  btnRew = $('btnRew'),
-  btnFwd = $('btnFwd');
-const btnMute = $('btnMute'),
-  btnLoop = $('btnLoop'),
-  btnInfo = $('btnInfo'),
-  btnFs = $('btnFs');
-const volRange = $('volRange'),
-  spdSel = $('spdSel'),
-  audSel = $('audSel'),
-  audWrap = $('audWrap');
-const sbar = $('sbar'),
-  splayed = $('splayed'),
-  sbuf = $('sbuf'),
-  sdot = $('sdot'),
-  stip = $('stip');
-const timeCur = $('timeCur'),
-  timeTot = $('timeTot'),
-  topNow = $('topNow'),
-  extPill = $('extPill');
-const browseList = $('browseList'),
-  browseStatus = $('browseStatus'),
-  dirInput = $('dirInput'),
-  btnBrowse = $('btnBrowse');
+/* ── UTILS ────────────────────────────────────────────────────────────────── */
+function fmt(s){
+  if(!isFinite(s)||s<0)return'0:00';
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
+  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`;
+}
+function fmtSz(b){
+  if(b<1e3)return b+' B';if(b<1e6)return(b/1e3).toFixed(1)+' KB';
+  if(b<1e9)return(b/1e6).toFixed(1)+' MB';return(b/1e9).toFixed(2)+' GB';
+}
+// FIX 2: escH is for HTML output only — NOT for JS strings in onclick
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-function fmt(s) {
-  if (!isFinite(s) || s < 0) return '0:00';
-  const h = Math.floor(s / 3600),
-    m = Math.floor((s % 3600) / 60),
-    sec = Math.floor(s % 60);
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-    : `${m}:${String(sec).padStart(2, '0')}`;
+function showOSD(msg,ms=2300){
+  $('osd').textContent=msg; $('osd').classList.add('on');
+  clearTimeout(S.osdTimer); S.osdTimer=setTimeout(()=>$('osd').classList.remove('on'),ms);
+}
+// FIX 1: display:'flex' works because we no longer use Tailwind 'hidden' class
+function showLoad(msg){$('vloadTxt').textContent=msg;$('vload').style.display='flex';}
+function hideLoad(){$('vload').style.display='none';}
+function showCTP(){$('clickToPlay').style.display='flex';}
+function hideCTP(){$('clickToPlay').style.display='none';}
+function flash(p){
+  $('flashDisc').textContent=p?'▶':'⏸';
+  $('vflash').classList.remove('flash-go'); void $('vflash').offsetWidth; $('vflash').classList.add('flash-go');
+}
+function syncMute(){$('btnMute').textContent=vid.muted||vid.volume===0?'🔇':vid.volume<.5?'🔈':'🔊';}
+// CRITICAL: transcode = S.offset + vid.currentTime; direct = vid.currentTime
+function actualTime(){return S.isDirect?vid.currentTime:S.offset+vid.currentTime;}
+
+/* ── FIX 5: canDirect checks BOTH video AND audio codec ─────────────────── */
+function canDirect(fileName, info, audioIdx){
+  if(audioIdx!==0) return false; // audio switching needs ffmpeg
+  const ext=(fileName.split('.').pop()||'').toLowerCase();
+  if(ext!=='mp4'&&ext!=='m4v'&&ext!=='webm') return false;
+  const vcodec=info?.video?.[0]?.codec;
+  const goodVideo=vcodec==='h264'||vcodec==='hevc'||vcodec==='vp8'||vcodec==='vp9';
+  if(!goodVideo) return false;
+  // FIX 5: also check audio — DTS, AC3, TrueHD cannot play directly in browsers
+  if(!info?.audio?.length) return true; // no audio = fine
+  const acodec=info.audio[0]?.codec||'';
+  const browserAudio=['aac','mp3','mp4a','opus','vorbis','flac','pcm_s16le','pcm_s24le'];
+  return browserAudio.some(c=>acodec.toLowerCase().includes(c));
 }
 
-function fmtSz(b) {
-  if (b < 1e3) return b + ' B';
-  if (b < 1e6) return (b / 1e3).toFixed(1) + ' KB';
-  if (b < 1e9) return (b / 1e6).toFixed(1) + ' MB';
-  return (b / 1e9).toFixed(2) + ' GB';
+/* ── FIX 8: quickPath uses /homedir for real user paths ─────────────────── */
+async function loadHomePath(){
+  try{const r=await fetch('/homedir');const d=await r.json();S.homePath=d.home||'';}catch{}
 }
-
-function escH(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[c]);
-}
-
-function escJs(s) {
-  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
-}
-
-function showOSD(msg, ms = 2300) {
-  osdEl.textContent = msg;
-  osdEl.classList.add('on');
-  clearTimeout(S.osdTimer);
-  S.osdTimer = setTimeout(() => osdEl.classList.remove('on'), ms);
-}
-
-function flash(play) {
-  flashDisc.textContent = play ? '▶' : '⏸';
-  vflash.classList.remove('flash-go');
-  void vflash.offsetWidth;
-  vflash.classList.add('flash-go');
-}
-
-function showLoad(msg) {
-  vloadTxt.textContent = msg;
-  vload.style.display = 'flex';
-}
-
-function hideLoad() {
-  vload.style.display = 'none';
-}
-
-function actualTime() {
-  return S.offset + (vid.currentTime || 0);
-}
-
-/* AUDIO CONTEXT UNLOCK - fix user gesture chain */
-function unlockAudioContext() {
-  if (S.audioCtxUnlocked) return;
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (AudioContext) {
-    const ctx = new AudioContext();
-    ctx.resume().then(() => {
-      ctx.close();
-      S.audioCtxUnlocked = true;
-      console.log('AudioContext unlocked');
-    }).catch(() => {});
-  }
-}
-
-// Unlock on first page click
-document.addEventListener('click', unlockAudioContext, { once: true });
-
-/* BROWSE PC */
-async function browseDir() {
-  const dir = dirInput.value.trim();
-  if (!dir) return showOSD('Enter a folder path');
-
-  browseStatus.classList.remove('hidden');
-  browseStatus.textContent = 'Scanning…';
-  browseList.innerHTML = '';
-
-  try {
-    const r = await fetch('/browse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir }),
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Failed');
-
-    S.browseDir = data.dir;
-    S.browseFiles = data.files;
-
-    browseStatus.textContent = `${data.files.length} video${data.files.length !== 1 ? 's' : ''} found`;
-
-    renderBrowseList(data.files);
-  } catch (err) {
-    browseStatus.textContent = '❌ ' + err.message;
-  }
-}
-
-function renderBrowseList(files) {
-  if (!files.length) {
-    browseList.innerHTML = '<div class="text-center py-4 text-vlc-srf3 text-xs">No video files found</div>';
-    return;
-  }
-  browseList.innerHTML = files.map(f => {
-    const ext = (f.name.split('.').pop() || '').toUpperCase();
-    return `
-      <div class="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-vlc-srf2 group cursor-pointer"
-           onclick="playLocalFile('${escJs(f.path)}', '${escJs(f.name)}')">
-        <div class="w-[50px] h-[32px] rounded bg-vlc-srf3 flex-shrink-0 overflow-hidden flex items-center justify-center text-base">
-          <img src="/local-thumb?path=${encodeURIComponent(f.path)}" alt=""
-               class="w-full h-full object-cover"
-               onerror="this.parentNode.innerHTML='🎬'">
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="text-xs font-medium text-white truncate" title="${escH(f.name)}">${escH(f.name)}</div>
-          <div class="flex items-center gap-1 mt-0.5">
-            <span class="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-vlc-srf3 text-vlc-srf3">${escH(ext)}</span>
-            <span class="text-[11px] text-vlc-srf3">${fmtSz(f.size)}</span>
-          </div>
-        </div>
-        <button onclick="event.stopPropagation(); addToPlaylist('${escJs(f.name)}', '${escJs(f.path)}', true)"
-                class="opacity-0 group-hover:opacity-100 px-2 py-1 rounded bg-vlc-orange/20 text-vlc-orange text-[10px] font-bold hover:bg-vlc-orange hover:text-white transition-all whitespace-nowrap">
-          + List
-        </button>
-      </div>`;
-  }).join('');
-}
-
-function quickPath(type) {
-  const isWin = navigator.userAgent.includes('Windows') || navigator.platform.includes('Win');
-  const isMac = navigator.userAgent.includes('Macintosh');
-
-  const paths = {
-    windows: {
-      desktop: 'C:\\Users\\%USERPROFILE%\\Desktop',
-      downloads: 'C:\\Users\\%USERPROFILE%\\Downloads',
-      videos: 'C:\\Users\\%USERPROFILE%\\Videos',
-    },
-    mac: {
-      desktop: '/Users/~/Desktop',
-      downloads: '/Users/~/Downloads',
-      videos: '/Users/~/Movies',
-    },
-    linux: {
-      desktop: '~/Desktop',
-      downloads: '~/Downloads',
-      videos: '~/Videos',
-    },
+function quickPath(type){
+  const home=S.homePath;
+  const sep=home.includes('\\')?'\\':'/';
+  const paths={
+    desktop  :home?home+sep+'Desktop'  :'',
+    downloads:home?home+sep+'Downloads':'',
+    videos   :home?home+sep+(home.includes('\\')?'Videos':'Movies'):'',
   };
-
-  const os = isWin ? 'windows' : isMac ? 'mac' : 'linux';
-  dirInput.value = paths[os][type] || '';
-  dirInput.focus();
+  const p=paths[type]||'';
+  if(!p){showOSD('⚠️ Home path not loaded yet — try scanning manually');return;}
+  $('pathInput').value=p; $('pathInput').focus(); $('pathInput').select();
 }
 
-async function playLocalFile(filePath, fileName) {
-  S.isLocal = true;
-  S.filePath = filePath;
-  S.file = fileName;
-  S.audioIdx = 0;
-  S.offset = 0;
-
-  document.querySelectorAll('.fi').forEach(el => el.classList.remove('active'));
-
-  vph.style.display = 'none';
-  showLoad('Loading media info…');
-  topNow.innerHTML = `Now playing: <em>${escH(fileName)}</em>`;
-  extPill.textContent = (fileName.split('.').pop() || '').toUpperCase();
-  extPill.style.display = '';
-
-  try {
-    const r = await fetch(`/local-info?path=${encodeURIComponent(filePath)}`);
-    if (!r.ok) throw new Error('Server returned ' + r.status);
-    S.info = await r.json();
-    S.duration = S.info.format.duration || 0;
-    timeTot.textContent = fmt(S.duration);
-    buildAudSel(S.info.audio);
-    showLoad('Buffering…');
-    loadStream(0, 0);
-  } catch (err) {
-    hideLoad();
-    vph.style.display = 'flex';
-    showOSD('❌ ' + err.message);
-  }
+/* ── FOLDER SCANNING ─────────────────────────────────────────────────────── */
+async function scanFolder(dir){
+  dir=dir||$('pathInput').value.trim();
+  if(!dir){showOSD('⚠️ Enter a folder path');return;}
+  const st=$('scanStatus');
+  st.textContent='Scanning…'; st.style.color='rgba(255,255,255,.3)';
+  try{
+    const r=await fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||'Scan failed');
+    S.recentDirs=[...new Set([d.dir,...S.recentDirs])].slice(0,5);
+    localStorage.setItem('vlc_recent',JSON.stringify(S.recentDirs));
+    $('pathInput').value=d.dir;
+    st.textContent=`${d.count} video${d.count!==1?'s':''} found`; st.style.color='#4ade80';
+    const parts=d.dir.replace(/\\/g,'/').split('/').filter(Boolean);
+    $('folderBadge').textContent=parts[parts.length-1]||d.dir; $('folderBadge').style.display='';
+    renderRecent(); renderFiles(d.files);
+  }catch(err){st.textContent='❌ '+err.message; st.style.color='#f87171';}
 }
 
-/* PLAYER */
-function buildAudSel(tracks) {
-  if (!tracks || !tracks.length) {
-    audWrap.style.display = 'none';
+function renderRecent(){
+  const el=$('recentList'); if(!S.recentDirs.length){el.style.display='none';return;}
+  el.style.display='block';
+  // FIX 3: use data-dir attribute, not inline onclick with escaped strings
+  const hd='<div class="px-3 pt-1.5 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-white/20">Recent</div>';
+  el.innerHTML=hd+S.recentDirs.map(d=>{
+    const label=d.replace(/\\/g,'/').split('/').filter(Boolean).pop()||d;
+    return`<div class="recent-dir block w-full text-left px-3 py-1.5 text-[11px] text-white/30 hover:text-white hover:bg-vlc-srf2 truncate transition-colors cursor-pointer" data-dir="${escH(d)}" title="${escH(d)}">📁 ${escH(label)}</div>`;
+  }).join('');
+}
+
+// FIX 2+3: event delegation for file list AND recent list
+document.addEventListener('click', e => {
+  // Recent folder click
+  const rd = e.target.closest('.recent-dir');
+  if(rd){ const d=rd.dataset.dir; if(d){$('pathInput').value=d;scanFolder(d);} return; }
+  // File row click — but not delete button
+  const del = e.target.closest('[data-del]');
+  if(del){ e.stopPropagation(); return; }
+  const row = e.target.closest('.file-row');
+  if(row && row.dataset.path && row.dataset.name) playFile(row.dataset.path, row.dataset.name);
+});
+
+/* ── FIX 6: renderFiles re-renders the whole list instead of DOM patching ── */
+function renderFiles(files){
+  const el=$('fileList'); $('fileCount').textContent=files.length;
+  S._lastFiles=files; // FIX 6: store for clean re-render on playFile
+  if(!files.length){
+    el.innerHTML='<div class="text-center py-10 text-white/20 text-xs leading-loose">No video files found.<br>Try a different folder.</div>';
     return;
   }
-  audWrap.style.display = 'flex';
-  audSel.innerHTML = tracks.map((t, i) => {
-    const ch = t.channels ? `/${t.channels}ch` : '';
-    const codec = t.codec ? ` (${t.codec}${ch})` : '';
-    return `<option value="${i}">${escH(t.label)}${codec}</option>`;
+  // FIX 2: use data-path / data-name, never inline onclick with path strings
+  el.innerHTML=files.map(f=>{
+    const ext=(f.name.split('.').pop()||'').toUpperCase();
+    const act=S.filePath===f.path;
+    return`<div class="file-row flex items-center gap-2 px-2 py-1.5 cursor-pointer border-l-2 transition-colors ${act?'bg-vlc-orange/10 border-vlc-orange':'hover:bg-vlc-srf2 border-transparent'}"
+               data-path="${escH(f.path)}" data-name="${escH(f.name)}">
+      <div class="w-[52px] h-[33px] bg-vlc-srf3 rounded flex-shrink-0 overflow-hidden flex items-center justify-center text-base">
+        <img src="/thumb?path=${encodeURIComponent(f.path)}" alt="" class="w-full h-full object-cover" onerror="this.parentNode.innerHTML='🎬'">
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="text-xs font-medium truncate ${act?'text-vlc-orange2':'text-white'}" title="${escH(f.name)}">${escH(f.name)}</div>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <span class="text-[9px] font-bold uppercase px-1 py-px rounded bg-vlc-srf3 text-white/25">${escH(ext)}</span>
+          <span class="text-[11px] text-white/25">${fmtSz(f.size)}</span>
+        </div>
+      </div>
+      <div class="row-act opacity-0 transition-opacity flex-shrink-0">
+        <span class="text-[10px] px-2 py-1 rounded bg-vlc-orange/20 text-vlc-orange font-bold">▶</span>
+      </div>
+    </div>`;
   }).join('');
-  audSel.value = String(S.audioIdx);
 }
 
-function loadStream(startTime, audioIdx) {
-  S.offset = startTime;
-  if (audioIdx !== undefined) S.audioIdx = audioIdx;
-  const hasAudio = S.info && S.info.audio && S.info.audio.length > 0;
-  const aidx = hasAudio ? S.audioIdx : -1;
+/* ── PLAYER ──────────────────────────────────────────────────────────────── */
+async function playFile(filePath, fileName){
+  S.filePath=filePath; S.fileName=fileName; S.audioIdx=0; S.offset=0; S.isDirect=false;
+  // FIX 6: re-render the file list to update active state cleanly
+  if(S._lastFiles) renderFiles(S._lastFiles);
+  $('vph').style.display='none';
+  $('extPill').textContent=(fileName.split('.').pop()||'').toUpperCase(); $('extPill').style.display='';
+  $('topNow').innerHTML=`Now playing: <em class="text-white/50">${escH(fileName)}</em>`;
+  showLoad('Reading file info…');
+  try{
+    const r=await fetch(`/info?path=${encodeURIComponent(filePath)}`);
+    if(!r.ok) throw new Error('Info error '+r.status);
+    S.info=await r.json(); S.duration=S.info.format.duration||0;
+    $('timeTot').textContent=fmt(S.duration); buildAudSel(S.info.audio);
+    showLoad('Buffering…'); loadStream(0,0);
+  }catch(err){hideLoad();$('vph').style.display='flex';showOSD('❌ '+err.message);}
+}
 
-  // Save volume state before changing src
-  const savedVolume = vid.volume;
-  const savedMuted = vid.muted;
+function buildAudSel(tracks){
+  // FIX 1: display:'flex' works now — no hidden class conflict
+  if(!tracks||!tracks.length){$('audWrap').style.display='none';return;}
+  $('audWrap').style.display='flex';
+  $('audSel').innerHTML=tracks.map((t,i)=>{
+    const ch=t.channels?`/${t.channels}ch`:'', c=t.codec?` (${t.codec}${ch})`:'';
+    return`<option value="${i}">${escH(t.label)}${c}</option>`;
+  }).join('');
+  $('audSel').value='0';
+}
 
-  let url;
-  if (S.isLocal && S.filePath) {
-    url = `/local-stream?path=${encodeURIComponent(S.filePath)}&audio=${aidx}&start=${startTime.toFixed(3)}`;
+function loadStream(startTime, audioIdx){
+  S.offset=startTime; if(audioIdx!==undefined) S.audioIdx=audioIdx;
+  const aidx=(S.info?.audio?.length>0)?S.audioIdx:-1;
+  // FIX 5: canDirect now checks audio codec too
+  S.isDirect=canDirect(S.fileName,S.info,S.audioIdx);
+  const vol=vid.volume||parseFloat($('volRange').value)||1, muted=vid.muted;
+  if(S.isDirect){
+    vid.src=`/stream?path=${encodeURIComponent(S.filePath)}&direct=1`;
+    vid.volume=vol; vid.muted=muted;
+    if(startTime>0) vid.addEventListener('loadedmetadata',function f(){vid.currentTime=startTime;vid.removeEventListener('loadedmetadata',f);});
   } else {
-    url = `/stream/${encodeURIComponent(S.file)}?audio=${aidx}&start=${startTime.toFixed(3)}`;
+    vid.src=`/stream?path=${encodeURIComponent(S.filePath)}&audio=${aidx}&start=${startTime.toFixed(3)}`;
+    vid.volume=vol; vid.muted=muted;
   }
-
-  vid.src = url;
-
-  // Restore volume after src change
-  vid.volume = savedVolume;
-  vid.muted = savedMuted;
-
-  vid.play().catch(err => {
-    console.warn('Play failed:', err.name, err.message);
-    if (err.name === 'NotAllowedError') {
-      showOSD('🔇 Click to enable audio');
-      // Show a click-to-play overlay
-      vph.style.display = 'flex';
-      vph.innerHTML = '<div class="text-center"><div class="text-[48px] mb-4">🔇</div><div class="text-[16px] font-semibold">Click anywhere to enable audio</div><div class="text-[13px] text-white/50 mt-2">Browser requires user interaction for audio playback</div></div>';
-    }
+  const p=vid.play();
+  if(p) p.catch(err=>{
+    if(err.name==='NotAllowedError'||err.name==='NotSupportedError'){hideLoad();showCTP();}
+    else console.warn('[play]',err.name,err.message);
   });
 }
 
-function stopAll() {
-  vid.pause();
-  vid.src = '';
-  S.file = null;
-  S.filePath = null;
-  S.isLocal = false;
-  S.info = null;
-  S.duration = 0;
-  S.offset = 0;
-  vph.style.display = 'flex';
-  hideLoad();
-  btnPlay.textContent = '▶';
-  splayed.style.width = '0%';
-  sbuf.style.width = '0%';
-  timeCur.textContent = '0:00';
-  timeTot.textContent = '0:00';
-  topNow.textContent = 'No file loaded';
-  extPill.style.display = 'none';
-  audWrap.style.display = 'none';
-  tinfo.classList.remove('vis');
-  btnInfo.classList.remove('on');
-  S.showInfo = false;
+function stopAll(){
+  vid.pause(); vid.src=''; S.filePath=null; S.fileName=null; S.info=null;
+  S.duration=0; S.offset=0; S.isDirect=false;
+  $('vph').style.display='flex'; hideLoad(); hideCTP(); $('btnPlay').textContent='▶';
+  $('splayed').style.width='0'; $('sbuf').style.width='0';
+  $('timeCur').textContent='0:00'; $('timeTot').textContent='0:00';
+  $('topNow').textContent='No file loaded'; $('extPill').style.display='none'; $('audWrap').style.display='none';
 }
 
-/* VIDEO EVENTS */
-vid.addEventListener('loadstart', () => {
-  if (S.file) showLoad('Connecting…');
+/* ── VIDEO EVENTS ────────────────────────────────────────────────────────── */
+vid.addEventListener('loadstart',()=>{if(S.filePath)showLoad('Connecting…');});
+vid.addEventListener('waiting',  ()=>showLoad('Buffering…'));
+vid.addEventListener('canplay',  ()=>hideLoad());
+vid.addEventListener('playing',  ()=>{hideLoad();hideCTP();$('btnPlay').textContent='⏸';});
+vid.addEventListener('pause',    ()=>$('btnPlay').textContent='▶');
+vid.addEventListener('volumechange', syncMute);
+vid.addEventListener('error',    ()=>{hideLoad();if(S.filePath)showOSD('⚠️ Stream error — check console');});
+vid.addEventListener('durationchange',()=>{if(S.isDirect&&isFinite(vid.duration)){S.duration=vid.duration;$('timeTot').textContent=fmt(S.duration);}});
+vid.addEventListener('ended',()=>{
+  const t=actualTime(),nearEnd=(S.duration-t)<2;
+  if(!nearEnd&&S.filePath&&!S.isDirect){loadStream(t);return;}
+  if(S.looping&&S.filePath){loadStream(0);return;}
+  $('btnPlay').textContent='▶';
+});
+vid.addEventListener('timeupdate',()=>{
+  if(!S.duration)return;
+  const t=actualTime(),pct=Math.min(t/S.duration,1)*100;
+  $('splayed').style.width=pct+'%'; $('sdot').style.left=pct+'%'; $('timeCur').textContent=fmt(t);
+});
+vid.addEventListener('progress',()=>{
+  if(!vid.buffered.length||!S.duration)return;
+  const end=vid.buffered.end(vid.buffered.length-1);
+  $('sbuf').style.width=(Math.min((S.isDirect?end:S.offset+end)/S.duration,1)*100)+'%';
 });
 
-vid.addEventListener('waiting', () => showLoad('Buffering…'));
-
-vid.addEventListener('canplay', () => hideLoad());
-
-vid.addEventListener('playing', () => {
-  hideLoad();
-  btnPlay.textContent = '⏸';
+/* ── SEEK BAR ────────────────────────────────────────────────────────────── */
+const sbar=$('sbar');
+sbar.addEventListener('mousemove',e=>{
+  if(!S.duration)return;
+  const r=sbar.getBoundingClientRect(),pct=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  $('stip').textContent=fmt(pct*S.duration); $('stip').style.left=(pct*100)+'%'; $('stip').style.opacity='1';
+});
+sbar.addEventListener('mouseleave',()=>$('stip').style.opacity='0');
+sbar.addEventListener('click',e=>{
+  if(!S.filePath||!S.duration)return;
+  const r=sbar.getBoundingClientRect(),pct=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),t=pct*S.duration;
+  if(S.isDirect){vid.currentTime=t;showOSD(`⏩ ${fmt(t)}`);}
+  else{showLoad('Seeking…');loadStream(t);showOSD(`⏩ ${fmt(t)}`);}
 });
 
-vid.addEventListener('pause', () => btnPlay.textContent = '▶');
-
-vid.addEventListener('ended', () => {
-  const t = actualTime(),
-    nearEnd = S.duration - t < 2;
-  if (!nearEnd && S.file) {
-    loadStream(t);
-    return;
-  }
-
-  if (S.repeat === 'one') {
-    loadStream(0);
-    return;
-  }
-
-  if (S.plIndex >= 0) {
-    let next;
-    if (S.shuffle) {
-      next = Math.floor(Math.random() * S.playlist.length);
-    } else {
-      next = S.plIndex + 1;
-      if (next >= S.playlist.length) {
-        if (S.repeat === 'all') next = 0;
-        else {
-          btnPlay.textContent = '▶';
-          return;
-        }
-      }
-    }
-    playFromPlaylist(next);
-    return;
-  }
-
-  if (S.looping) {
-    loadStream(0);
-    return;
-  }
-  btnPlay.textContent = '▶';
-});
-
-vid.addEventListener('error', () => {
-  hideLoad();
-  if (S.file) showOSD('⚠️ Stream error');
-});
-
-vid.addEventListener('timeupdate', () => {
-  if (!S.duration) return;
-  const t = actualTime(),
-    pct = Math.min(t / S.duration, 1) * 100;
-  splayed.style.width = pct + '%';
-  sdot.style.left = pct + '%';
-  timeCur.textContent = fmt(t);
-});
-
-vid.addEventListener('progress', () => {
-  if (!vid.buffered.length || !S.duration) return;
-  const end = vid.buffered.end(vid.buffered.length - 1);
-  sbuf.style.width = (Math.min((S.offset + end) / S.duration, 1) * 100) + '%';
-});
-
-/* SYNC MUTE BUTTON - browser can auto-mute without us knowing */
-vid.addEventListener('volumechange', () => {
-  const vol = vid.volume;
-  const isMuted = vid.muted || vol === 0;
-  btnMute.textContent = isMuted ? '🔇' : (vol < 0.5 ? '🔈' : '🔊');
-});
-
-/* SEEK BAR */
-sbar.addEventListener('mousemove', e => {
-  if (!S.duration) return;
-  const r = sbar.getBoundingClientRect(),
-    pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-  stip.textContent = fmt(pct * S.duration);
-  stip.style.left = (pct * 100) + '%';
-});
-
-sbar.addEventListener('click', e => {
-  if (!S.file || !S.duration) return;
-  const r = sbar.getBoundingClientRect(),
-    pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
-    t = pct * S.duration;
-  showLoad('Seeking…');
-  loadStream(t);
-  showOSD(`⏩ ${fmt(t)}`);
-});
-
-/* CONTROLS */
-$('vwrap').addEventListener('click', e => {
-  if (e.target === $('vwrap') || e.target === vid) {
-    // Dismiss click-to-play overlay if showing
-    if (vph.innerHTML.includes('Click anywhere to enable audio')) {
-      vph.style.display = 'none';
-      unlockAudioContext();
-      vid.muted = false;
-      vid.volume = volRange.value || 1;
-      vid.play().catch(() => {});
-    } else {
-      togglePlay();
-    }
-  }
-});
-
-btnPlay.addEventListener('click', e => {
-  e.stopPropagation();
-  togglePlay();
-});
-
-function togglePlay() {
-  if (!S.file) return;
-  if (vid.paused) {
-    // User explicitly clicked play - ensure audio is enabled
-    vid.muted = false;
-    vid.volume = volRange.value || 1;
-    vid.play();
-    flash(true);
-  } else {
-    vid.pause();
-    flash(false);
-  }
+/* ── CONTROLS ────────────────────────────────────────────────────────────── */
+$('vwrap').addEventListener('click',e=>{if(e.target===$('vwrap')||e.target===vid)togglePlay();});
+$('btnPlay').addEventListener('click',e=>{e.stopPropagation();togglePlay();});
+function togglePlay(){
+  if(!S.filePath)return; hideCTP();
+  if(vid.paused){
+    vid.muted=false; vid.volume=vid.volume||parseFloat($('volRange').value)||1;
+    vid.play().catch(err=>{if(err.name==='NotAllowedError')showCTP();else console.warn('[play]',err.message);}); flash(true);
+  }else{vid.pause();flash(false);}
 }
-
-btnStop.addEventListener('click', stopAll);
-
-btnRew.addEventListener('click', () => {
-  if (!S.file) return;
-  const t = Math.max(0, actualTime() - 10);
-  showLoad('Seeking…');
-  loadStream(t);
-  showOSD(`⏪ ${fmt(t)}`);
+$('btnStop').addEventListener('click',stopAll);
+$('btnRew').addEventListener('click',()=>{
+  if(!S.filePath)return; const t=Math.max(0,actualTime()-10);
+  if(S.isDirect){vid.currentTime=t;showOSD(`⏪ ${fmt(t)}`);}
+  else{showLoad('Seeking…');loadStream(t);showOSD(`⏪ ${fmt(t)}`);}
 });
-
-btnFwd.addEventListener('click', () => {
-  if (!S.file) return;
-  const t = Math.min(S.duration || 999999, actualTime() + 10);
-  showLoad('Seeking…');
-  loadStream(t);
-  showOSD(`⏩ ${fmt(t)}`);
+$('btnFwd').addEventListener('click',()=>{
+  if(!S.filePath)return; const t=Math.min(S.duration||999999,actualTime()+10);
+  if(S.isDirect){vid.currentTime=t;showOSD(`⏩ ${fmt(t)}`);}
+  else{showLoad('Seeking…');loadStream(t);showOSD(`⏩ ${fmt(t)}`);}
 });
-
-btnMute.addEventListener('click', () => {
-  vid.muted = !vid.muted;
-  btnMute.textContent = vid.muted ? '🔇' : (vid.volume < 0.5 ? '🔈' : '🔊');
-  showOSD(vid.muted ? '🔇 Muted' : '🔊 Unmuted');
+$('btnMute').addEventListener('click',()=>{
+  vid.muted=!vid.muted; if(!vid.muted&&vid.volume===0){vid.volume=0.8;$('volRange').value=0.8;}
+  syncMute(); showOSD(vid.muted?'🔇 Muted':'🔊 Unmuted');
 });
-
-volRange.addEventListener('input', () => {
-  vid.volume = parseFloat(volRange.value);
-  vid.muted = false;
-  btnMute.textContent = vid.volume === 0 ? '🔇' : vid.volume < 0.5 ? '🔈' : '🔊';
+$('volRange').addEventListener('input',()=>{vid.volume=parseFloat($('volRange').value);vid.muted=false;syncMute();});
+$('spdSel').addEventListener('change',()=>{vid.playbackRate=parseFloat($('spdSel').value);showOSD(`⚡ ${$('spdSel').value}×`);});
+$('btnLoop').addEventListener('click',()=>{S.looping=!S.looping;$('btnLoop').classList.toggle('on',S.looping);showOSD(S.looping?'🔁 Loop ON':'➡️ Loop OFF');});
+$('btnInfo').addEventListener('click',()=>{
+  S.showInfo=!S.showInfo;
+  $('tinfo').style.display=S.showInfo?'block':'none';
+  $('btnInfo').classList.toggle('on',S.showInfo);
+  if(S.showInfo)buildInfo();
 });
-
-spdSel.addEventListener('change', () => {
-  vid.playbackRate = parseFloat(spdSel.value);
-  showOSD(`⚡ ${spdSel.value}×`);
+$('audSel').addEventListener('change',()=>{
+  const idx=parseInt($('audSel').value,10); if(idx===S.audioIdx)return;
+  const t=actualTime(); S.audioIdx=idx;
+  showOSD(`🎵 Audio: ${S.info?.audio[idx]?.label||'Track '+(idx+1)}`);
+  showLoad('Switching audio…'); loadStream(t,idx); if(S.showInfo)buildInfo();
 });
+$('vwrap').addEventListener('dblclick',toggleFs); $('btnFs').addEventListener('click',toggleFs);
+function toggleFs(){if(!document.fullscreenElement)$('vmain').requestFullscreen?.().catch(()=>{});else document.exitFullscreen?.();}
 
-btnLoop.addEventListener('click', () => {
-  S.looping = !S.looping;
-  btnLoop.classList.toggle('on', S.looping);
-  showOSD(S.looping ? '🔁 Loop ON' : '➡️ Loop OFF');
-});
-
-btnInfo.addEventListener('click', () => {
-  S.showInfo = !S.showInfo;
-  tinfo.classList.toggle('vis', S.showInfo);
-  btnInfo.classList.toggle('on', S.showInfo);
-  if (S.showInfo) buildInfoPanel();
-});
-
-function buildInfoPanel() {
-  if (!S.info) {
-    tinfoRows.innerHTML = '<div style="color:var(--txt3);font-size:12px">No file loaded</div>';
-    return;
-  }
-  const v = S.info.video[0],
-    a = S.info.audio[S.audioIdx];
-  const rows = [
-    ['Container', (S.info.format.name || '').split(',')[0] || '—'],
-    v && ['Video', `${(v.codec || '').toUpperCase()} ${v.width}×${v.height} @ ${v.fps} fps`],
-    a && ['Audio', `${(a.codec || '').toUpperCase()} ${a.channels}ch ${Math.round((a.sampleRate || 0) / 1000)} kHz`],
-    ['Duration', fmt(S.info.format.duration)],
-    ['File Size', fmtSz(S.info.format.size)],
-    ['Bitrate', S.info.format.bitrate ? Math.round(S.info.format.bitrate / 1000) + ' kbps' : '—'],
-    ['Audio Tracks', String(S.info.audio.length)],
-    S.info.subtitles.length && ['Subtitles', String(S.info.subtitles.length)],
+/* ── FIX 4: buildInfo resets innerHTML before building rows ─────────────── */
+function buildInfo(){
+  const rows=$('tinfoRows');
+  rows.innerHTML=''; // FIX 4: reset first — prevents duplicate rows on re-open
+  if(!S.info){rows.innerHTML='<div class="text-white/20 text-xs">No file loaded</div>';return;}
+  const v=S.info.video[0], a=S.info.audio[S.audioIdx];
+  const mode=S.isDirect?'Direct (native seek)':'Transcoded (ffmpeg)';
+  const items=[
+    ['Mode',mode],
+    ['Container',(S.info.format.name||'').split(',')[0]||'—'],
+    v&&['Video',`${(v.codec||'').toUpperCase()} ${v.width}×${v.height} @${v.fps}fps`],
+    a&&['Audio',`${(a.codec||'').toUpperCase()} ${a.channels}ch ${Math.round((a.sampleRate||0)/1000)}kHz`],
+    ['Duration',fmt(S.info.format.duration)],
+    ['Size',fmtSz(S.info.format.size)],
+    ['Bitrate',S.info.format.bitrate?Math.round(S.info.format.bitrate/1000)+' kbps':'—'],
+    ['Audio Tracks',String(S.info.audio.length)],
   ].filter(Boolean);
-  tinfoRows.innerHTML = rows.map(([k, v]) =>
-    `<div class="flex justify-between items-baseline py-1 border-b border-white/7 last:border-0">
-      <span class="text-vlc-srf3 text-[11px]">${k}</span>
-      <span class="text-white text-[12px] font-medium max-w-[136px] text-right overflow-hidden text-ellipsis whitespace-nowrap">${escH(v)}</span>
-    </div>`
-  ).join('');
+  rows.innerHTML=items.map(([k,v])=>`
+    <div class="flex justify-between py-1 border-b border-white/5 last:border-0">
+      <span class="text-white/30 text-[11px]">${k}</span>
+      <span class="text-white text-xs font-medium max-w-[120px] text-right truncate">${escH(v)}</span>
+    </div>`).join('');
 }
 
-audSel.addEventListener('change', () => {
-  const idx = parseInt(audSel.value, 10);
-  if (idx === S.audioIdx) return;
-  const t = actualTime();
-  S.audioIdx = idx;
-  showOSD(`🎵 Audio: ${S.info?.audio[idx]?.label || 'Track ' + (idx + 1)}`);
-  showLoad('Switching audio…');
-  loadStream(t, idx);
-  if (S.showInfo) buildInfoPanel();
-});
+/* ── CLICK-TO-PLAY + AUDIO UNLOCK ───────────────────────────────────────── */
+$('clickToPlay').addEventListener('click',()=>{hideCTP();vid.muted=false;vid.volume=vid.volume||1;vid.play().catch(e=>console.warn('[CTP]',e.message));});
 
-btnFs.addEventListener('click', toggleFs);
-$('vwrap').addEventListener('dblclick', toggleFs);
+// Unlock AudioContext on first page click — fixes audio blocked after async await
+let _au=false;
+document.addEventListener('click',function _u(){
+  if(_au)return; _au=true;
+  try{const ac=new(window.AudioContext||window.webkitAudioContext)();const b=ac.createBuffer(1,1,22050);const s=ac.createBufferSource();s.buffer=b;s.connect(ac.destination);s.start(0);setTimeout(()=>ac.close(),200);}catch(e){}
+  document.removeEventListener('click',_u,{capture:true});
+},{capture:true});
 
-function toggleFs() {
-  if (!document.fullscreenElement) $('vmain').requestFullscreen?.().catch(() => {});
-  else document.exitFullscreen?.();
-}
-
-/* KEYBOARD */
-document.addEventListener('keydown', e => {
-  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-  switch (e.key) {
-    case ' ':
-    case 'k':
-    case 'K':
-      e.preventDefault();
-      togglePlay();
-      break;
-    case 'ArrowLeft':
-      e.preventDefault();
-      btnRew.click();
-      break;
-    case 'ArrowRight':
-      e.preventDefault();
-      btnFwd.click();
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      vid.volume = Math.min(1, vid.volume + 0.1);
-      volRange.value = vid.volume;
-      showOSD(`🔊 ${Math.round(vid.volume * 100)}%`);
-      break;
-    case 'ArrowDown':
-      e.preventDefault();
-      vid.volume = Math.max(0, vid.volume - 0.1);
-      volRange.value = vid.volume;
-      showOSD(`🔊 ${Math.round(vid.volume * 100)}%`);
-      break;
-    case 'm':
-    case 'M':
-      btnMute.click();
-      break;
-    case 'f':
-    case 'F':
-      toggleFs();
-      break;
-    case 'l':
-    case 'L':
-      btnLoop.click();
-      break;
-    case 'i':
-    case 'I':
-      btnInfo.click();
-      break;
-    case 's':
-    case 'S':
-      btnStop.click();
-      break;
-    case 'Escape':
-      if (document.fullscreenElement) document.exitFullscreen();
-      break;
+/* ── KEYBOARD ────────────────────────────────────────────────────────────── */
+document.addEventListener('keydown',e=>{
+  if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
+  switch(e.key){
+    case' ':case'k':e.preventDefault();togglePlay();break;
+    case'ArrowLeft': e.preventDefault();$('btnRew').click();break;
+    case'ArrowRight':e.preventDefault();$('btnFwd').click();break;
+    case'ArrowUp':   e.preventDefault();vid.volume=Math.min(1,vid.volume+.1);$('volRange').value=vid.volume;showOSD(`🔊 ${Math.round(vid.volume*100)}%`);break;
+    case'ArrowDown': e.preventDefault();vid.volume=Math.max(0,vid.volume-.1);$('volRange').value=vid.volume;showOSD(`🔊 ${Math.round(vid.volume*100)}%`);break;
+    case'm':case'M':$('btnMute').click();break;
+    case'f':case'F':toggleFs();break;
+    case'l':case'L':$('btnLoop').click();break;
+    case'i':case'I':$('btnInfo').click();break;
+    case's':case'S':stopAll();break;
+    case'Escape':if(document.fullscreenElement)document.exitFullscreen();break;
   }
 });
 
-/* PLAYLIST */
-function addToPlaylist(name, path, isLocal) {
-  if (S.playlist.find(p => p.path === path)) {
-    showOSD('Already in playlist');
-    return;
-  }
-  const item = {
-    id: crypto.randomUUID(),
-    name,
-    path,
-    isLocal,
-    duration: 0
-  };
-  S.playlist.push(item);
-  renderPlaylist();
-  showOSD(`➕ Added: ${name}`);
-
-  const infoUrl = isLocal
-    ? `/local-info?path=${encodeURIComponent(path)}`
-    : `/info/${encodeURIComponent(name)}`;
-  fetch(infoUrl)
-    .then(r => r.json())
-    .then(info => {
-      item.duration = info.format?.duration || 0;
-      renderPlaylist();
-    })
-    .catch(() => {});
-}
-
-function renderPlaylist() {
-  const container = $('plList');
-  if (!S.playlist.length) {
-    container.innerHTML = '<div class="text-center py-4 text-vlc-srf3 text-xs">No items. Add videos using the [+] button.</div>';
-    $('plCount').textContent = '0';
-    return;
-  }
-  container.innerHTML = S.playlist.map((item, i) => {
-    const active = i === S.plIndex;
-    const dur = item.duration ? fmt(item.duration) : '—:——';
-    const bgClass = active ? 'bg-vlc-orange/10 border-l-2 border-vlc-orange' : 'hover:bg-vlc-srf2';
-    return `
-      <div class="flex items-center gap-2 px-3 py-2 cursor-pointer ${bgClass} group"
-           data-plid="${item.id}" onclick="playFromPlaylist(${i})">
-        <span class="text-xs w-5 text-center ${active ? 'text-vlc-orange' : 'text-vlc-srf3'}">
-          ${active ? '▶' : i + 1}
-        </span>
-        <span class="flex-1 truncate text-xs ${active ? 'text-vlc-orange2 font-medium' : 'text-white/80'}"
-              title="${escH(item.name)}">${escH(item.name)}</span>
-        <span class="text-xs text-vlc-srf3 tabular-nums">${dur}</span>
-        <button onclick="event.stopPropagation(); removeFromPlaylist('${item.id}')"
-                class="opacity-0 group-hover:opacity-100 text-vlc-srf3 hover:text-vlc-danger px-1 text-xs">✕</button>
-      </div>`;
-  }).join('');
-  $('plCount').textContent = S.playlist.length;
-}
-
-function playFromPlaylist(index) {
-  if (index < 0 || index >= S.playlist.length) return;
-  S.plIndex = index;
-  renderPlaylist();
-  const item = S.playlist[index];
-  if (item.isLocal) {
-    playLocalFile(item.path, item.name);
+/* ── INIT ────────────────────────────────────────────────────────────────── */
+$('pathInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();scanFolder();}});
+S.recentDirs=JSON.parse(localStorage.getItem('vlc_recent')||'[]');
+renderRecent();
+// FIX 8: load real home path, then auto-scan last used folder
+loadHomePath().then(()=>{
+  if(S.recentDirs.length){
+    $('pathInput').value=S.recentDirs[0];
+    scanFolder(S.recentDirs[0]);  // auto-scan last folder on page load
   } else {
-    playFile(item.name);
+    // Set a helpful default path
+    quickPath('videos');
   }
-}
-
-function removeFromPlaylist(id) {
-  const idx = S.playlist.findIndex(p => p.id === id);
-  if (idx === -1) return;
-  S.playlist.splice(idx, 1);
-  if (S.plIndex === idx) S.plIndex = -1;
-  else if (S.plIndex > idx) S.plIndex--;
-  renderPlaylist();
-}
-
-function clearPlaylist() {
-  S.playlist = [];
-  S.plIndex = -1;
-  renderPlaylist();
-  showOSD('🗑️ Playlist cleared');
-}
-
-function togglePlaylist() {
-  S.plOpen = !S.plOpen;
-  const panel = $('plPanel');
-  const btn = $('btnPlToggle');
-  panel.style.height = S.plOpen ? '180px' : '36px';
-  btn.textContent = S.plOpen ? '∨' : '∧';
-  $('plList').style.display = S.plOpen ? '' : 'none';
-}
-
-function playNext() {
-  if (!S.playlist.length) return;
-  let next;
-  if (S.shuffle) {
-    next = Math.floor(Math.random() * S.playlist.length);
-  } else {
-    next = S.plIndex + 1;
-    if (next >= S.playlist.length) {
-      if (S.repeat === 'all') next = 0;
-      else return showOSD('End of playlist');
-    }
-  }
-  playFromPlaylist(next);
-}
-
-function playPrev() {
-  if (!S.playlist.length) return;
-  let prev = S.plIndex - 1;
-  if (prev < 0) prev = S.repeat === 'all' ? S.playlist.length - 1 : 0;
-  playFromPlaylist(prev);
-}
-
-function toggleShuffle() {
-  S.shuffle = !S.shuffle;
-  $('btnShuffle').classList.toggle('on', S.shuffle);
-  showOSD(S.shuffle ? '🔀 Shuffle ON' : '🔀 Shuffle OFF');
-}
-
-function cycleRepeat() {
-  const modes = ['off', 'one', 'all'];
-  S.repeat = modes[(modes.indexOf(S.repeat) + 1) % modes.length];
-  const labels = { off: '🔁 Off', one: '🔂 One', all: '🔁 All' };
-  $('btnRepeat').textContent = labels[S.repeat];
-  $('btnRepeat').classList.toggle('on', S.repeat !== 'off');
-  showOSD(`Repeat: ${S.repeat}`);
-}
-
-/* INIT */
-console.log('Local Video Player initialized - Ready to browse and play local videos');
+});
 </script>
 </body>
 </html>
