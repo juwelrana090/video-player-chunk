@@ -137,7 +137,7 @@ input[type="range"]::-moz-range-thumb {
   <div class="flex items-center gap-1.5 py-1 px-2.5 py-1 bg-gradient-to-br from-vlc-orange to-vlc-orange2 rounded-full font-bold text-[12px] text-white flex-shrink-0">
     ▶ VLC
   </div>
-  <div class="font-semibold text-[14px] flex-shrink-0">Video Player</div>
+  <div class="font-semibold text-[14px] flex-shrink-0">Local Video Player</div>
   <div class="flex-1 text-[12px] text-vlc-srf3 overflow-hidden text-ellipsis whitespace-nowrap px-1" id="topNow">
     No file loaded
   </div>
@@ -150,66 +150,14 @@ input[type="range"]::-moz-range-thumb {
   <!-- LEFT SIDEBAR -->
   <aside class="w-[272px] flex-shrink-0 bg-vlc-srf border-r border-white/7 flex flex-col overflow-hidden">
 
-    <!-- TABS -->
-    <div class="flex border-b border-white/5">
-      <button
-        id="tabLib"
-        onclick="switchTab('library')"
-        class="flex-1 py-2 text-xs font-semibold tracking-wide text-vlc-orange border-b-2 border-vlc-orange transition-all"
-      >
-        Library
-      </button>
-      <button
-        id="tabBrowse"
-        onclick="switchTab('browse')"
-        class="flex-1 py-2 text-xs font-semibold tracking-wide text-white/40 border-b-2 border-transparent hover:text-white/70 transition-all"
-      >
-        Browse PC
-      </button>
-    </div>
-
-    <!-- LIBRARY TAB -->
-    <div id="libTab" class="flex-1 flex flex-col overflow-hidden">
-      <!-- Upload zone -->
-      <div class="p-2.5 flex-shrink-0">
-        <div class="drop-zone border-[1.5px] border-dashed border-white/7 rounded-xl py-3 text-center cursor-pointer transition-all hover:border-vlc-orange hover:bg-vlc-orange/7" id="dropZone">
-          <input type="file" id="fileInput" class="absolute inset-0 opacity-0 cursor-pointer" multiple
-            accept="video/*,.mkv,.avi,.mov,.flv,.ts,.m4v,.3gp,.mpeg,.wmv,.rmvb,.ogv">
-          <div class="text-[22px] mb-1">📁</div>
-          <div class="text-[11px] text-vlc-srf2 leading-relaxed">
-            <b class="text-vlc-orange">Click or drag</b> videos here<br>MP4 · MKV · AVI · MOV · FLV &amp; more
-          </div>
-        </div>
-        <div class="up-bar mt-2 hidden" id="upBar">
-          <div class="up-track h-[3px] bg-vlc-srf3 rounded-[2px] overflow-hidden">
-            <div class="up-fill h-full w-0 bg-vlc-orange transition-all duration-150" id="upFill"></div>
-          </div>
-          <div class="up-lbl mt-1 text-[11px] text-vlc-srf3 text-center" id="upLbl">Uploading…</div>
-        </div>
-      </div>
-
-      <!-- File count -->
-      <div class="px-2.5 py-1.5 border-t border-white/7 border-b bg-vlc-bg2 flex items-center justify-between flex-shrink-0">
-        <span class="text-[10px] font-bold tracking-[0.7px] uppercase text-vlc-srf3">Library</span>
-        <span class="text-[11px] text-vlc-srf3 bg-vlc-srf2 px-2 py-0.5 rounded-full" id="sbCount">0</span>
-      </div>
-
-      <!-- File list -->
-      <div class="flex-1 overflow-y-auto custom-scroll p-1" id="fileList">
-        <div class="text-center py-7 text-vlc-srf3 text-[12px] leading-relaxed">
-          No videos yet.<br>Upload one to get started!
-        </div>
-      </div>
-    </div>
-
-    <!-- BROWSE PC TAB -->
-    <div id="browseTab" class="flex-1 flex flex-col overflow-hidden hidden">
+    <!-- BROWSE PC SECTION -->
+    <div class="flex-1 flex flex-col overflow-hidden">
       <div class="p-3 space-y-2">
         <div class="flex gap-2">
           <input
             id="dirInput"
             type="text"
-            placeholder="C:\Users\Juwel\Videos"
+            placeholder="C:\Users\YourName\Videos"
             class="flex-1 bg-vlc-srf2 border border-white/10 rounded-lg px-3 py-2 text-xs text-white
                    placeholder-vlc-srf3 outline-none focus:border-vlc-orange/50"
           />
@@ -400,6 +348,7 @@ const S = {
   looping: false,
   showInfo: false,
   osdTimer: null,
+  audioCtxUnlocked: false, // for user gesture tracking
 
   // Playlist
   playlist: [],
@@ -445,11 +394,6 @@ const timeCur = $('timeCur'),
   timeTot = $('timeTot'),
   topNow = $('topNow'),
   extPill = $('extPill');
-const fileList = $('fileList'),
-  sbCount = $('sbCount'),
-  upBar = $('upBar'),
-  upFill = $('upFill'),
-  upLbl = $('upLbl');
 const browseList = $('browseList'),
   browseStatus = $('browseStatus'),
   dirInput = $('dirInput'),
@@ -513,150 +457,22 @@ function actualTime() {
   return S.offset + (vid.currentTime || 0);
 }
 
-/* TABS */
-function switchTab(tab) {
-  const libTab = $('libTab');
-  const browseTab = $('browseTab');
-  const tabLib = $('tabLib');
-  const tabBrowse = $('tabBrowse');
-
-  if (tab === 'library') {
-    libTab.classList.remove('hidden');
-    browseTab.classList.add('hidden');
-    tabLib.classList.add('text-vlc-orange', 'border-vlc-orange');
-    tabLib.classList.remove('text-white/40', 'border-transparent');
-    tabBrowse.classList.remove('text-vlc-orange', 'border-vlc-orange');
-    tabBrowse.classList.add('text-white/40', 'border-transparent');
-  } else {
-    libTab.classList.add('hidden');
-    browseTab.classList.remove('hidden');
-    tabBrowse.classList.add('text-vlc-orange', 'border-vlc-orange');
-    tabBrowse.classList.remove('text-white/40', 'border-transparent');
-    tabLib.classList.remove('text-vlc-orange', 'border-vlc-orange');
-    tabLib.classList.add('text-white/40', 'border-transparent');
+/* AUDIO CONTEXT UNLOCK - fix user gesture chain */
+function unlockAudioContext() {
+  if (S.audioCtxUnlocked) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (AudioContext) {
+    const ctx = new AudioContext();
+    ctx.resume().then(() => {
+      ctx.close();
+      S.audioCtxUnlocked = true;
+      console.log('AudioContext unlocked');
+    }).catch(() => {});
   }
 }
 
-/* LIBRARY */
-async function loadFiles() {
-  try {
-    const r = await fetch('/files');
-    renderFiles(await r.json());
-  } catch {
-    renderFiles([]);
-  }
-}
-
-function renderFiles(files) {
-  sbCount.textContent = files.length;
-  if (!files.length) {
-    fileList.innerHTML = '<div class="text-center py-7 text-vlc-srf3 text-[12px] leading-relaxed">No videos yet.<br>Upload one to get started!</div>';
-    return;
-  }
-  fileList.innerHTML = files.map(f => {
-    const ext = (f.name.split('.').pop() || '').toUpperCase();
-    const act = S.file === f.name;
-    const activeClass = act ? 'bg-vlc-orange/10 border-l-2 border-vlc-orange' : 'hover:bg-vlc-srf2';
-    const nameClass = act ? 'text-vlc-orange2 font-semibold' : 'text-white';
-    return `
-      <div class="fi flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer ${activeClass} group" data-name="${escH(f.name)}">
-        <div class="w-[50px] h-[32px] rounded-[5px] bg-vlc-srf3 flex-shrink-0 overflow-hidden flex items-center justify-center text-base">
-          <img src="/thumbnail/${encodeURIComponent(f.name)}" class="w-full h-full object-cover" onerror="this.parentNode.innerHTML='🎬'" alt="" />
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="fi-name text-xs font-medium ${nameClass} truncate" title="${escH(f.name)}">${escH(f.name)}</div>
-          <div class="flex items-center gap-1 mt-0.5">
-            <span class="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-vlc-srf3 text-vlc-srf3 tracking-wide">${escH(ext)}</span>
-            <span class="text-[11px] text-vlc-srf3">${fmtSz(f.size)}</span>
-          </div>
-        </div>
-        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button data-add="${escH(f.name)}" title="Add to playlist" class="text-[11px] px-1.5 py-1 rounded bg-vlc-orange/20 text-vlc-orange hover:bg-vlc-orange hover:text-white font-bold transition-all">+</button>
-          <button data-del="${escH(f.name)}" title="Delete" class="text-[13px] px-1.5 py-1 rounded text-vlc-srf3 hover:text-vlc-danger hover:bg-red-900/20 transition-all">✕</button>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-fileList.addEventListener('click', e => {
-  const del = e.target.closest('[data-del]');
-  if (del) {
-    e.stopPropagation();
-    return deleteFile(del.dataset.del);
-  }
-  const add = e.target.closest('[data-add]');
-  if (add) {
-    e.stopPropagation();
-    return addToPlaylist(add.dataset.add, add.dataset.add, false);
-  }
-  const item = e.target.closest('.fi');
-  if (item?.dataset.name) playFile(item.dataset.name);
-});
-
-async function deleteFile(name) {
-  if (!confirm(`Delete "${name}"?`)) return;
-  try {
-    await fetch(`/files/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    if (S.file === name) stopAll();
-    showOSD('🗑️ Deleted');
-    loadFiles();
-  } catch {
-    showOSD('❌ Delete failed');
-  }
-}
-
-/* UPLOAD */
-const dropZone = $('dropZone'),
-  fileInput = $('fileInput');
-
-fileInput.addEventListener('change', () => {
-  Array.from(fileInput.files).forEach(doUpload);
-  fileInput.value = '';
-});
-
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.classList.add('drag');
-});
-
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
-
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag');
-  Array.from(e.dataTransfer.files)
-    .filter(f => f.type.startsWith('video/') || /\.(mkv|avi|mov|flv|ts|m4v|3gp|mpeg|wmv|rmvb|ogv)$/i.test(f.name))
-    .forEach(doUpload);
-});
-
-function doUpload(file) {
-  const fd = new FormData();
-  fd.append('video', file);
-  upBar.style.display = 'block';
-  upFill.style.width = '0%';
-  upLbl.textContent = `Uploading ${file.name}…`;
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/upload');
-  xhr.upload.onprogress = e => {
-    if (e.lengthComputable) {
-      const p = (e.loaded / e.total * 100).toFixed(0);
-      upFill.style.width = p + '%';
-      upLbl.textContent = `${p}%  ${file.name}`;
-    }
-  };
-  xhr.onload = () => {
-    upBar.style.display = 'none';
-    if (xhr.status === 200) {
-      showOSD('✅ Uploaded: ' + JSON.parse(xhr.responseText).name);
-      loadFiles();
-    } else showOSD('❌ Upload failed');
-  };
-  xhr.onerror = () => {
-    upBar.style.display = 'none';
-    showOSD('❌ Upload error');
-  };
-  xhr.send(fd);
-}
+// Unlock on first page click
+document.addEventListener('click', unlockAudioContext, { once: true });
 
 /* BROWSE PC */
 async function browseDir() {
@@ -776,37 +592,6 @@ async function playLocalFile(filePath, fileName) {
 }
 
 /* PLAYER */
-async function playFile(name) {
-  S.isLocal = false;
-  S.filePath = null;
-  S.file = name;
-  S.audioIdx = 0;
-  S.offset = 0;
-
-  document.querySelectorAll('.fi').forEach(el => el.classList.toggle('active', el.dataset.name === name));
-
-  vph.style.display = 'none';
-  showLoad('Loading media info…');
-  topNow.innerHTML = `Now playing: <em>${escH(name)}</em>`;
-  extPill.textContent = (name.split('.').pop() || '').toUpperCase();
-  extPill.style.display = '';
-
-  try {
-    const r = await fetch(`/info/${encodeURIComponent(name)}`);
-    if (!r.ok) throw new Error('Server returned ' + r.status);
-    S.info = await r.json();
-    S.duration = S.info.format.duration || 0;
-    timeTot.textContent = fmt(S.duration);
-    buildAudSel(S.info.audio);
-    showLoad('Buffering…');
-    loadStream(0, 0);
-  } catch (err) {
-    hideLoad();
-    vph.style.display = 'flex';
-    showOSD('❌ ' + err.message);
-  }
-}
-
 function buildAudSel(tracks) {
   if (!tracks || !tracks.length) {
     audWrap.style.display = 'none';
@@ -827,6 +612,10 @@ function loadStream(startTime, audioIdx) {
   const hasAudio = S.info && S.info.audio && S.info.audio.length > 0;
   const aidx = hasAudio ? S.audioIdx : -1;
 
+  // Save volume state before changing src
+  const savedVolume = vid.volume;
+  const savedMuted = vid.muted;
+
   let url;
   if (S.isLocal && S.filePath) {
     url = `/local-stream?path=${encodeURIComponent(S.filePath)}&audio=${aidx}&start=${startTime.toFixed(3)}`;
@@ -835,7 +624,20 @@ function loadStream(startTime, audioIdx) {
   }
 
   vid.src = url;
-  vid.play().catch(() => {});
+
+  // Restore volume after src change
+  vid.volume = savedVolume;
+  vid.muted = savedMuted;
+
+  vid.play().catch(err => {
+    console.warn('Play failed:', err.name, err.message);
+    if (err.name === 'NotAllowedError') {
+      showOSD('🔇 Click to enable audio');
+      // Show a click-to-play overlay
+      vph.style.display = 'flex';
+      vph.innerHTML = '<div class="text-center"><div class="text-[48px] mb-4">🔇</div><div class="text-[16px] font-semibold">Click anywhere to enable audio</div><div class="text-[13px] text-white/50 mt-2">Browser requires user interaction for audio playback</div></div>';
+    }
+  });
 }
 
 function stopAll() {
@@ -857,7 +659,6 @@ function stopAll() {
   topNow.textContent = 'No file loaded';
   extPill.style.display = 'none';
   audWrap.style.display = 'none';
-  document.querySelectorAll('.fi').forEach(el => el.classList.remove('active'));
   tinfo.classList.remove('vis');
   btnInfo.classList.remove('on');
   S.showInfo = false;
@@ -937,6 +738,13 @@ vid.addEventListener('progress', () => {
   sbuf.style.width = (Math.min((S.offset + end) / S.duration, 1) * 100) + '%';
 });
 
+/* SYNC MUTE BUTTON - browser can auto-mute without us knowing */
+vid.addEventListener('volumechange', () => {
+  const vol = vid.volume;
+  const isMuted = vid.muted || vol === 0;
+  btnMute.textContent = isMuted ? '🔇' : (vol < 0.5 ? '🔈' : '🔊');
+});
+
 /* SEEK BAR */
 sbar.addEventListener('mousemove', e => {
   if (!S.duration) return;
@@ -958,7 +766,18 @@ sbar.addEventListener('click', e => {
 
 /* CONTROLS */
 $('vwrap').addEventListener('click', e => {
-  if (e.target === $('vwrap') || e.target === vid) togglePlay();
+  if (e.target === $('vwrap') || e.target === vid) {
+    // Dismiss click-to-play overlay if showing
+    if (vph.innerHTML.includes('Click anywhere to enable audio')) {
+      vph.style.display = 'none';
+      unlockAudioContext();
+      vid.muted = false;
+      vid.volume = volRange.value || 1;
+      vid.play().catch(() => {});
+    } else {
+      togglePlay();
+    }
+  }
 });
 
 btnPlay.addEventListener('click', e => {
@@ -969,6 +788,9 @@ btnPlay.addEventListener('click', e => {
 function togglePlay() {
   if (!S.file) return;
   if (vid.paused) {
+    // User explicitly clicked play - ensure audio is enabled
+    vid.muted = false;
+    vid.volume = volRange.value || 1;
     vid.play();
     flash(true);
   } else {
@@ -1256,8 +1078,7 @@ function cycleRepeat() {
 }
 
 /* INIT */
-loadFiles();
-setInterval(loadFiles, 6000);
+console.log('Local Video Player initialized - Ready to browse and play local videos');
 </script>
 </body>
 </html>
