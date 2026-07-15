@@ -8,6 +8,27 @@ const ffprobeBin = require('@ffprobe-installer/ffprobe').path;
 ffmpeg.setFfmpegPath(ffmpegBin);
 ffmpeg.setFfprobePath(ffprobeBin);
 
+const { Transform } = require('stream');
+
+function make1MBChunker() {
+  const CHUNK = 1024 * 1024; // 1 MB
+  let buf = Buffer.alloc(0);
+  return new Transform({
+    transform(data, _, cb) {
+      buf = Buffer.concat([buf, data]);
+      while (buf.length >= CHUNK) {
+        this.push(buf.subarray(0, CHUNK));
+        buf = buf.subarray(CHUNK);
+      }
+      cb();
+    },
+    flush(cb) {
+      if (buf.length > 0) this.push(buf);
+      cb();
+    }
+  });
+}
+
 const app  = express();
 const PORT = process.env.PORT || 9090;
 
@@ -194,9 +215,14 @@ app.get('/stream', (req, res) => {
     })
     .on('end', () => activeStreams.delete(sid));
 
+  const chunker = make1MBChunker();
   activeStreams.set(sid, cmd);
-  req.on('close', () => { try { cmd.kill('SIGKILL'); } catch {} activeStreams.delete(sid); });
-  cmd.pipe(res, { end: true });
+  req.on('close', () => {
+    try { cmd.kill('SIGKILL'); } catch {}
+    chunker.destroy();
+    activeStreams.delete(sid);
+  });
+  cmd.pipe(chunker).pipe(res);
 });
 
 ['SIGINT', 'SIGTERM'].forEach(s => process.on(s, () => {
