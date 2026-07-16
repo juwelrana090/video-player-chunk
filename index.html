@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VLC Local Player</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -169,7 +170,31 @@
         <div id="scanStatus" class="text-[11px] text-white/30 min-h-[16px]"></div>
       </div>
 
-      <!-- RECENT FOLDERS: FIX 1 — style="display:none" not hidden class -->
+      <!-- STREAM URL ── online video URL / HLS / proxy -->
+<div class="px-3 py-2.5 flex-shrink-0 border-b border-white/5 space-y-2">
+  <div class="text-[10px] font-bold tracking-widest uppercase text-white/30">
+    🌐 Stream URL
+  </div>
+  <div class="flex gap-2">
+    <input
+      id="urlInput"
+      type="text"
+      placeholder="https://…/video.mp4  ·  .m3u8  ·  .mkv  ·  rtmp://…"
+      class="flex-1 bg-vlc-srf2 border border-white/10 rounded-lg px-3 py-2 text-xs text-white
+                        placeholder-white/20 outline-none focus:border-vlc-orange/50 transition-colors min-w-0"
+    />
+    <button
+      onclick="playUrl()"
+      class="px-3 py-2 bg-vlc-orange hover:bg-vlc-orange2 rounded-lg text-xs font-bold
+                         text-white transition-colors flex-shrink-0"
+    >
+      Load
+    </button>
+  </div>
+  <div id="urlStatus" class="text-[11px] min-h-[14px] text-white/30"></div>
+</div>
+
+<!-- RECENT FOLDERS: FIX 1 — style="display:none" not hidden class -->
       <div id="recentList" style="display:none" class="border-b border-white/5 flex-shrink-0 max-h-32 overflow-y-auto">
         <div class="px-3 pt-1.5 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-white/20">Recent</div>
         <!-- items rendered by renderRecent() -->
@@ -297,9 +322,19 @@
             class="btn p-1.5 rounded-lg text-[17px] hover:bg-white/10 active:scale-90 transition-all">&#128266;</button>
           <input id="volRange" type="range" class="w-16 mx-1" min="0" max="1" step="0.05" value="1">
 
-          <div class="text-xs text-white/40 tabular-nums mx-2 whitespace-nowrap flex-shrink-0">
-            <span class="text-white" id="timeCur">0:00</span><span class="mx-0.5">/</span><span id="timeTot">0:00</span>
-          </div>
+          <div
+  class="text-xs text-white/40 tabular-nums mx-2 whitespace-nowrap flex-shrink-0 flex items-center gap-1.5"
+>
+  <span class="text-white" id="timeCur">0:00</span
+  ><span class="mx-0.5 text-white/30">/</span><span id="timeTot">0:00</span>
+  <span
+    id="liveBadge"
+    style="display:none"
+    class="text-[9px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full uppercase tracking-wide animate-pulse"
+  >
+    ● LIVE
+  </span>
+</div>
 
           <div class="ml-auto flex items-center gap-1">
             <!-- FIX 1: audWrap uses style="display:none" not Tailwind hidden -->
@@ -359,9 +394,14 @@
       autoplay:    true,        // auto-advance to next file when video ends
       currentDir:  '',          // currently browsed directory path
       isPip:       false,       // picture-in-picture active
+      isUrl:       false,       // true = playing from online URL (not local file)
+      streamUrl:   '',          // the URL being streamed
+      isLive:      false,       // true = live stream (no duration, no seek)
+      isHls:       false,       // true = HLS stream via hls.js
     };
     const $ = id => document.getElementById(id);
     const vid = $('vid');
+    let hlsInstance = null; // hls.js instance for M3U8 streams
 
     /* ── UTILS ────────────────────────────────────────────────────────────────── */
     function fmt(s) {
@@ -392,8 +432,234 @@
       $('vflash').classList.remove('flash-go'); void $('vflash').offsetWidth; $('vflash').classList.add('flash-go');
     }
     function syncMute() { $('btnMute').textContent = vid.muted || vid.volume === 0 ? '🔇' : vid.volume < .5 ? '🔈' : '🔊'; }
-    // CRITICAL: transcode = S.offset + vid.currentTime; direct = vid.currentTime
-    function actualTime() { return S.isDirect ? vid.currentTime : S.offset + vid.currentTime; }
+    // CRITICAL: transcode = S.offset + vid.currentTime; direct/HLS/URL-direct = vid.currentTime
+    function actualTime() { return S.isDirect || S.isHls ? vid.currentTime : S.offset + vid.currentTime; }
+
+    /* ── URL STREAMING HELPERS ───────────────────────────────────────────────── */
+
+    // Detect how to play a URL: 'hls' | 'direct' | 'proxy'
+    function detectUrlMode(url) {
+      const lower = url.toLowerCase().split("?")[0];
+      if (lower.includes(".m3u8")) return "hls";
+      const directExts = [".mp4", ".m4v", ".webm", ".ogg", ".ogv"];
+      if (directExts.some((ext) => lower.endsWith(ext))) return "direct";
+      return "proxy"; // .mkv .avi .flv .ts .mpd rtmp:// rtsp:// → ffmpeg
+    }
+
+    // Extract a display title from a URL
+    function urlTitle(url) {
+      try {
+        const u = new URL(url);
+        const seg = u.pathname.split("/").filter(Boolean).pop();
+        return seg ? decodeURIComponent(seg) : u.hostname;
+      } catch {
+        return url.slice(0, 60);
+      }
+    }
+
+    // Destroy active HLS instance cleanly
+    function destroyHls() {
+      if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+      }
+      S.isHls = false;
+    }
+
+    // Update UI for live vs VOD streams
+    function updateLiveUI(isLive) {
+      $("liveBadge").style.display = isLive ? "" : "none";
+      if (isLive) {
+        $("timeTot").textContent = "";
+        $("timeCur").textContent = "LIVE";
+        $("splayed").style.width = "100%"; // full orange bar for live
+      }
+      const st = $("urlStatus");
+      if (st) {
+        st.textContent = isLive ? "● Live stream" : "";
+        st.style.color = isLive ? "#f87171" : "rgba(255,255,255,.3)";
+      }
+    }
+
+    // Set up hls.js for an M3U8 URL
+    function setupHls(url) {
+      if (typeof Hls === "undefined") {
+        showOSD("⚠️ hls.js failed to load");
+        return;
+      }
+      if (Hls.isSupported()) {
+        hlsInstance = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: 90,
+        });
+        hlsInstance.loadSource(url);
+        hlsInstance.attachMedia(vid);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+          hideLoad();
+          // Detect live vs VOD from the manifest
+          const isLive = hlsInstance.levels?.[0]?.details?.live !== false;
+          S.isLive = isLive;
+          updateLiveUI(isLive);
+          if (!isLive && isFinite(vid.duration) && vid.duration > 0) {
+            S.duration = vid.duration;
+            $("timeTot").textContent = fmt(S.duration);
+          }
+          // Expose audio tracks if multiple exist
+          if (data.audioTracks && data.audioTracks.length > 1) {
+            const tracks = data.audioTracks.map((t, i) => ({
+              index: i,
+              codec: "",
+              channels: 0,
+              channelLayout: "",
+              sampleRate: 0,
+              language: t.lang || "und",
+              title: t.name || null,
+              label: t.name || (t.lang ? t.lang.toUpperCase() : `Track ${i + 1}`),
+              isDefault: i === 0,
+            }));
+            buildAudSel(tracks);
+          }
+          vid.play().catch(() => {
+            hideLoad();
+            showCTP();
+          });
+        });
+        hlsInstance.on(Hls.Events.ERROR, (_, data) => {
+          if (!data.fatal) return;
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              showOSD("⚠️ HLS network error — retrying…");
+              hlsInstance.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              showOSD("⚠️ HLS media error — recovering…");
+              hlsInstance.recoverMediaError();
+              break;
+            default:
+              showOSD("⚠️ HLS fatal: " + data.details);
+              destroyHls();
+              break;
+          }
+        });
+      } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari native HLS
+        S.isDirect = true;
+        vid.src = url;
+        vid.play().catch(() => {
+          hideLoad();
+          showCTP();
+        });
+      } else {
+        showOSD("⚠️ HLS not supported — falling back to proxy");
+        loadUrlStream(0);
+      }
+    }
+
+    // Main URL player entry point
+    async function playUrl(inputUrl) {
+      const url = (inputUrl || $("urlInput")?.value || "").trim();
+      if (!url) {
+        showOSD("⚠️ Enter a URL first");
+        return;
+      }
+
+      // Stop any existing local file or URL stream
+      destroyHls();
+      S.isUrl = true;
+      S.streamUrl = url;
+      S.isHls = false;
+      S.isLive = false;
+      S.filePath = null;
+      S.fileName = urlTitle(url);
+      S.audioIdx = 0;
+      S.offset = 0;
+      S.isDirect = false;
+      S.info = null;
+      S.duration = 0;
+
+      $("vph").style.display = "none";
+      $("liveBadge").style.display = "none";
+      $("audWrap").style.display = "none";
+      $("timeTot").textContent = "0:00";
+      showLoad("Connecting…");
+      $("topNow").innerHTML =
+        `Streaming: <em class="text-white/50">${escH(S.fileName)}</em>`;
+
+      const mode = detectUrlMode(url);
+
+      if (mode === "hls") {
+        S.isHls = true;
+        S.isLive = true; // assume live until manifest says otherwise
+        $("extPill").textContent = "HLS";
+        $("extPill").style.display = "";
+        updateLiveUI(true);
+        setupHls(url);
+        return;
+      }
+
+      // For direct/proxy: try to probe the URL for duration + audio tracks
+      const st = $("urlStatus");
+      if (st) {
+        st.textContent = "Probing…";
+        st.style.color = "rgba(255,255,255,.3)";
+      }
+      try {
+        const r = await fetch(`/info-url?url=${encodeURIComponent(url)}`);
+        if (r.ok) {
+          S.info = await r.json();
+          S.duration = S.info.format?.duration || 0;
+          S.isLive = !isFinite(S.duration) || S.duration < 0.5;
+        }
+      } catch {
+        /* probe failed — treat as live/unknown */
+      }
+
+      const extLabel =
+        url.split(".").pop()?.split("?")[0]?.toUpperCase().slice(0, 5) || "URL";
+      $("extPill").textContent = mode === "direct" ? extLabel : "PROXY";
+      $("extPill").style.display = "";
+
+      updateLiveUI(S.isLive);
+      if (!S.isLive && S.duration > 0) {
+        $("timeTot").textContent = fmt(S.duration);
+        if (S.info?.audio?.length) buildAudSel(S.info.audio);
+      }
+      if (st) {
+        st.textContent = "";
+      }
+
+      if (mode === "direct") {
+        S.isDirect = true;
+        vid.src = url;
+        vid.play().catch(() => {
+          hideLoad();
+          showCTP();
+        });
+      } else {
+        loadUrlStream(0);
+      }
+    }
+
+    // Load/seek a URL proxy stream through /stream-url
+    function loadUrlStream(startTime, audioIdx) {
+      S.offset = startTime;
+      if (audioIdx !== undefined) S.audioIdx = audioIdx;
+      const aidx = S.info?.audio?.length > 0 ? S.audioIdx : -1;
+      const vol = vid.volume || parseFloat($("volRange").value) || 1,
+        muted = vid.muted;
+      vid.src = `/stream-url?url=${encodeURIComponent(S.streamUrl)}&audio=${aidx}&start=${startTime.toFixed(3)}`;
+      vid.volume = vol;
+      vid.muted = muted;
+      const p = vid.play();
+      if (p)
+        p.catch((err) => {
+          if (err.name === "NotAllowedError" || err.name === "NotSupportedError") {
+            hideLoad();
+            showCTP();
+          } else console.warn("[url-play]", err.name, err.message);
+        });
+    }
 
     /* ── FIX 5: canDirect checks BOTH video AND audio codec ─────────────────── */
     function canDirect(fileName, info, audioIdx) {
@@ -650,6 +916,11 @@
 
     /* ── PLAYER ──────────────────────────────────────────────────────────────── */
     async function playFile(filePath, fileName) {
+      // Stop any URL stream / HLS before playing a local file
+      destroyHls();
+      S.isUrl = false; S.streamUrl = ''; S.isLive = false;
+      $('liveBadge').style.display = 'none';
+      const st = $('urlStatus'); if (st) st.textContent = '';
       S.filePath = filePath; S.fileName = fileName; S.audioIdx = 0; S.offset = 0; S.isDirect = false;
       if (S._lastFiles) renderBrowser(S._lastDirs || [], S._lastFiles);
       $('vph').style.display = 'none';
@@ -699,17 +970,38 @@
     }
 
     function stopAll() {
-      // Exit PiP before clearing src — browser throws if src cleared while in PiP
-      if (document.pictureInPictureElement === vid) {
+      if (document.pictureInPictureElement === vid)
         document.exitPictureInPicture().catch(() => {});
-      }
-      vid.pause(); vid.src = ''; S.filePath = null; S.fileName = null; S.info = null;
-      S.duration = 0; S.offset = 0; S.isDirect = false;
+      destroyHls();
+      vid.pause();
+      vid.src = "";
+      S.filePath = null;
+      S.fileName = null;
+      S.info = null;
+      S.duration = 0;
+      S.offset = 0;
+      S.isDirect = false;
       S.isPip = false;
-      $('vph').style.display = 'flex'; hideLoad(); hideCTP(); $('btnPlay').textContent = '▶';
-      $('splayed').style.width = '0'; $('sbuf').style.width = '0';
-      $('timeCur').textContent = '0:00'; $('timeTot').textContent = '0:00';
-      $('topNow').textContent = 'No file loaded'; $('extPill').style.display = 'none'; $('audWrap').style.display = 'none';
+      S.isUrl = false;
+      S.streamUrl = "";
+      S.isLive = false;
+      S.isHls = false;
+      $("vph").style.display = "flex";
+      hideLoad();
+      hideCTP();
+      $("btnPlay").textContent = "▶";
+      $("splayed").style.width = "0";
+      $("sbuf").style.width = "0";
+      $("timeCur").textContent = "0:00";
+      $("timeTot").textContent = "0:00";
+      $("liveBadge").style.display = "none";
+      const st = $("urlStatus");
+      if (st) {
+        st.textContent = "";
+      }
+      $("topNow").textContent = "No file loaded";
+      $("extPill").style.display = "none";
+      $("audWrap").style.display = "none";
     }
 
     /* ── VIDEO EVENTS ────────────────────────────────────────────────────────── */
@@ -719,8 +1011,18 @@
     vid.addEventListener('playing', () => { hideLoad(); hideCTP(); $('btnPlay').textContent = '⏸'; });
     vid.addEventListener('pause', () => $('btnPlay').textContent = '▶');
     vid.addEventListener('volumechange', syncMute);
-    vid.addEventListener('error', () => { hideLoad(); if (S.filePath) showOSD('⚠️ Stream error — check console'); });
-    vid.addEventListener('durationchange', () => { if (S.isDirect && isFinite(vid.duration)) { S.duration = vid.duration; $('timeTot').textContent = fmt(S.duration); } });
+    vid.addEventListener('error', () => { hideLoad(); if (S.filePath || S.isUrl) showOSD('⚠️ Stream error — check console'); });
+    vid.addEventListener('durationchange', () => {
+  if (
+    (S.isDirect || S.isHls) &&
+    isFinite(vid.duration) &&
+    vid.duration > 0 &&
+    !S.isLive
+  ) {
+    S.duration = vid.duration;
+    $("timeTot").textContent = fmt(S.duration);
+  }
+});
     vid.addEventListener('enterpictureinpicture', () => {
       S.isPip = true;
       $('btnPip').classList.add('on');
@@ -732,37 +1034,71 @@
       showOSD('⧉ Picture-in-Picture OFF');
     });
     vid.addEventListener('ended', () => {
-      const t = actualTime(), nearEnd = (S.duration - t) < 2;
+  const t = actualTime(),
+    nearEnd = S.duration - t < 2;
 
-      // Premature end on transcoded stream — reload from current position
-      if (!nearEnd && S.filePath && !S.isDirect) { loadStream(t); return; }
+  // Premature end on transcoded local stream — reload from current position
+  if (!nearEnd && S.filePath && !S.isDirect) {
+    loadStream(t);
+    return;
+  }
 
-      // Loop current video
-      if (S.looping && S.filePath) { loadStream(0); return; }
+  // Premature end on proxy URL stream — reload from current position
+  if (!nearEnd && S.isUrl && !S.isDirect && !S.isHls) {
+    loadUrlStream(t);
+    return;
+  }
 
-      // Auto-next: advance to next file in the scanned library
-      if (S.autoplay && S._lastFiles && S._lastFiles.length > 0 && S.filePath) {
-        const idx = S._lastFiles.findIndex((f) => f.path === S.filePath);
-        if (idx !== -1 && idx + 1 < S._lastFiles.length) {
-          const next = S._lastFiles[idx + 1];
-          showOSD(`⏭ Next: ${next.name}`);
-          playFile(next.path, next.name);
-          return;
-        }
-      }
+  // Loop current video (local or URL)
+  if (S.looping) {
+    if (S.isUrl && !S.isHls) {
+      loadUrlStream(0);
+      return;
+    }
+    if (S.isUrl && S.isHls) {
+      vid.currentTime = 0;
+      vid.play();
+      return;
+    }
+    if (S.filePath) {
+      loadStream(0);
+      return;
+    }
+  }
 
-      $('btnPlay').textContent = '▶';
-    });
+  // Auto-next: local files only (URLs have no playlist)
+  if (!S.isUrl && S.autoplay && S._lastFiles?.length > 0 && S.filePath) {
+    const idx = S._lastFiles.findIndex((f) => f.path === S.filePath);
+    if (idx !== -1 && idx + 1 < S._lastFiles.length) {
+      const next = S._lastFiles[idx + 1];
+      showOSD(`⏭ Next: ${next.name}`);
+      playFile(next.path, next.name);
+      return;
+    }
+  }
+
+  $("btnPlay").textContent = "▶";
+});
     vid.addEventListener('timeupdate', () => {
-      if (!S.duration) return;
-      const t = actualTime(), pct = Math.min(t / S.duration, 1) * 100;
-      $('splayed').style.width = pct + '%'; $('sdot').style.left = pct + '%'; $('timeCur').textContent = fmt(t);
-    });
+  const t = actualTime();
+  if (S.isLive) {
+    $("timeCur").textContent = fmt(t);
+    return;
+  } // show elapsed, no seek bar
+  if (!S.duration) return;
+  const pct = Math.min(t / S.duration, 1) * 100;
+  $("splayed").style.width = pct + "%";
+  $("sdot").style.left = pct + "%";
+  $("timeCur").textContent = fmt(t);
+});
     vid.addEventListener('progress', () => {
-      if (!vid.buffered.length || !S.duration) return;
-      const end = vid.buffered.end(vid.buffered.length - 1);
-      $('sbuf').style.width = (Math.min((S.isDirect ? end : S.offset + end) / S.duration, 1) * 100) + '%';
-    });
+  if (!vid.buffered.length || !S.duration || S.isLive) return;
+  const end = vid.buffered.end(vid.buffered.length - 1);
+  $("sbuf").style.width =
+    Math.min((S.isDirect || S.isHls ? end : S.offset + end) / S.duration, 1) *
+      100 +
+    "%";
+});
 
     /* ── SEEK BAR ────────────────────────────────────────────────────────────── */
     const sbar = $('sbar');
@@ -773,17 +1109,33 @@
     });
     sbar.addEventListener('mouseleave', () => $('stip').style.opacity = '0');
     sbar.addEventListener('click', e => {
-      if (!S.filePath || !S.duration) return;
-      const r = sbar.getBoundingClientRect(), pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), t = pct * S.duration;
-      if (S.isDirect) { vid.currentTime = t; showOSD(`⏩ ${fmt(t)}`); }
-      else { showLoad('Seeking…'); loadStream(t); showOSD(`⏩ ${fmt(t)}`); }
-    });
+  if (!S.filePath && !S.isUrl) return;
+  if (S.isLive || !S.duration) {
+    if (S.isLive) showOSD("⚠️ Cannot seek live stream");
+    return;
+  }
+  const r = sbar.getBoundingClientRect(),
+    pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+    t = pct * S.duration;
+  if (S.isDirect || S.isHls) {
+    vid.currentTime = t;
+    showOSD(`⏩ ${fmt(t)}`);
+  } else if (S.isUrl) {
+    showLoad("Seeking…");
+    loadUrlStream(t);
+    showOSD(`⏩ ${fmt(t)}`);
+  } else {
+    showLoad("Seeking…");
+    loadStream(t);
+    showOSD(`⏩ ${fmt(t)}`);
+  }
+});
 
     /* ── CONTROLS ────────────────────────────────────────────────────────────── */
     $('vwrap').addEventListener('click', e => { if (e.target === $('vwrap') || e.target === vid) togglePlay(); });
     $('btnPlay').addEventListener('click', e => { e.stopPropagation(); togglePlay(); });
     function togglePlay() {
-      if (!S.filePath) return; hideCTP();
+      if (!S.filePath && !S.isUrl) return; hideCTP();
       if (vid.paused) {
         vid.muted = false; vid.volume = vid.volume || parseFloat($('volRange').value) || 1;
         vid.play().catch(err => { if (err.name === 'NotAllowedError') showCTP(); else console.warn('[play]', err.message); }); flash(true);
@@ -791,15 +1143,45 @@
     }
     $('btnStop').addEventListener('click', stopAll);
     $('btnRew').addEventListener('click', () => {
-      if (!S.filePath) return; const t = Math.max(0, actualTime() - 10);
-      if (S.isDirect) { vid.currentTime = t; showOSD(`⏪ ${fmt(t)}`); }
-      else { showLoad('Seeking…'); loadStream(t); showOSD(`⏪ ${fmt(t)}`); }
-    });
-    $('btnFwd').addEventListener('click', () => {
-      if (!S.filePath) return; const t = Math.min(S.duration || 999999, actualTime() + 10);
-      if (S.isDirect) { vid.currentTime = t; showOSD(`⏩ ${fmt(t)}`); }
-      else { showLoad('Seeking…'); loadStream(t); showOSD(`⏩ ${fmt(t)}`); }
-    });
+  if (!S.filePath && !S.isUrl) return;
+  if (S.isLive) {
+    showOSD("⚠️ Cannot seek live stream");
+    return;
+  }
+  const t = Math.max(0, actualTime() - 10);
+  if (S.isDirect || S.isHls) {
+    vid.currentTime = t;
+    showOSD(`⏪ ${fmt(t)}`);
+  } else if (S.isUrl) {
+    showLoad("Seeking…");
+    loadUrlStream(t);
+    showOSD(`⏪ ${fmt(t)}`);
+  } else {
+    showLoad("Seeking…");
+    loadStream(t);
+    showOSD(`⏪ ${fmt(t)}`);
+  }
+});
+$('btnFwd').addEventListener('click', () => {
+  if (!S.filePath && !S.isUrl) return;
+  if (S.isLive) {
+    showOSD("⚠️ Cannot seek live stream");
+    return;
+  }
+  const t = Math.min(S.duration || 999999, actualTime() + 10);
+  if (S.isDirect || S.isHls) {
+    vid.currentTime = t;
+    showOSD(`⏩ ${fmt(t)}`);
+  } else if (S.isUrl) {
+    showLoad("Seeking…");
+    loadUrlStream(t);
+    showOSD(`⏩ ${fmt(t)}`);
+  } else {
+    showLoad("Seeking…");
+    loadStream(t);
+    showOSD(`⏩ ${fmt(t)}`);
+  }
+});
     $('btnMute').addEventListener('click', () => {
       vid.muted = !vid.muted; if (!vid.muted && vid.volume === 0) { vid.volume = 0.8; $('volRange').value = 0.8; }
       syncMute(); showOSD(vid.muted ? '🔇 Muted' : '🔊 Unmuted');
@@ -816,11 +1198,18 @@
       if (S.showInfo) buildInfo();
     });
     $('audSel').addEventListener('change', () => {
-      const idx = parseInt($('audSel').value, 10); if (idx === S.audioIdx) return;
-      const t = actualTime(); S.audioIdx = idx;
-      showOSD(`🎵 Audio: ${S.info?.audio[idx]?.label || 'Track ' + (idx + 1)}`);
-      showLoad('Switching audio…'); loadStream(t, idx); if (S.showInfo) buildInfo();
-    });
+  const idx = parseInt($('audSel').value, 10);
+  if (idx === S.audioIdx) return;
+  const t = actualTime();
+  S.audioIdx = idx;
+  showOSD(`🎵 Audio: ${S.info?.audio[idx]?.label || 'Track ' + (idx + 1)}`);
+  showLoad('Switching audio…');
+  if (S.isUrl && !S.isHls) loadUrlStream(t, idx);
+  else if (!S.isUrl) {
+    loadStream(t, idx);
+    if (S.showInfo) buildInfo();
+  }
+});
     $('vwrap').addEventListener('dblclick', toggleFs); $('btnFs').addEventListener('click', toggleFs);
     function toggleFs() { if (!document.fullscreenElement) $('vmain').requestFullscreen?.().catch(() => { }); else document.exitFullscreen?.(); }
 
@@ -908,6 +1297,12 @@
 
     /* ── INIT ────────────────────────────────────────────────────────────────── */
     $('pathInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); scanFolder(); } });
+$('urlInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    playUrl();
+  }
+});
     S.recentDirs = JSON.parse(localStorage.getItem('vlc_recent') || '[]');
     renderRecent();
     // FIX 8: load real home path, then auto-scan last used folder

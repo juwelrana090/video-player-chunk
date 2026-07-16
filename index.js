@@ -142,6 +142,76 @@ app.get('/info', (req, res) => {
   });
 });
 
+/* ── GET /info-url?url=... ───────────────────────────────────────────────── */
+app.get("/info-url", (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: "url required" });
+
+  // 15-second timeout — some streams are slow to respond
+  let done = false;
+  const timer = setTimeout(() => {
+    if (!done) {
+      done = true;
+      res.status(408).json({ error: "Probe timeout" });
+    }
+  }, 15000);
+
+  ffmpeg.ffprobe(url, (err, meta) => {
+    clearTimeout(timer);
+    if (done || res.headersSent) return;
+    done = true;
+    if (err) return res.status(500).json({ error: err.message });
+
+    const audio = meta.streams
+      .filter((s) => s.codec_type === "audio")
+      .map((s, i) => {
+        const lang = s.tags?.language,
+          title = s.tags?.title;
+        return {
+          index: i,
+          codec: s.codec_name,
+          channels: s.channels,
+          channelLayout: s.channel_layout || "",
+          sampleRate: parseInt(s.sample_rate) || 0,
+          language: lang || "und",
+          title: title || null,
+          label:
+            title ||
+            (lang && lang !== "und" ? lang.toUpperCase() : `Track ${i + 1}`),
+          isDefault: s.disposition?.default === 1,
+        };
+      });
+    const video = meta.streams
+      .filter((s) => s.codec_type === "video")
+      .map((s) => {
+        let fps = 0;
+        try {
+          const [n, d] = s.r_frame_rate.split("/");
+          fps = parseFloat(n) / parseFloat(d);
+        } catch {}
+        return {
+          codec: s.codec_name,
+          width: s.width,
+          height: s.height,
+          fps: Math.round(fps * 100) / 100,
+          bitrate: parseInt(s.bit_rate) || 0,
+        };
+      });
+    const rawDur = parseFloat(meta.format.duration);
+    res.json({
+      format: {
+        name: meta.format.format_long_name || meta.format.format_name,
+        duration: isFinite(rawDur) ? rawDur : 0,
+        size: parseInt(meta.format.size) || 0,
+        bitrate: parseInt(meta.format.bit_rate) || 0,
+        title: meta.format.tags?.title || null,
+      },
+      video,
+      audio,
+    });
+  });
+});
+
 /* ── GET /thumb?path=... ─────────────────────────────────────────────────── */
 app.get('/thumb', (req, res) => {
   const fp = req.query.path;
@@ -239,6 +309,69 @@ app.get('/stream', (req, res) => {
   activeStreams.set(sid, cmd);
   req.on('close', () => {
     try { cmd.kill('SIGKILL'); } catch {}
+    chunker.destroy();
+    activeStreams.delete(sid);
+  });
+  cmd.pipe(chunker).pipe(res);
+});
+
+/* ── GET /stream-url?url=...&audio=0&start=0 ─────────────────────────────
+   Proxy any online URL through ffmpeg → fragmented MP4 → browser.
+   Supports: HTTP/S video files, HLS, DASH, RTMP, RTSP, and anything ffmpeg
+   can read. Zero local-file access — URL is fetched by ffmpeg on the server.
+*/
+app.get("/stream-url", (req, res) => {
+  const url = req.query.url;
+  const audioIdx = Math.max(-1, parseInt(req.query.audio ?? "0", 10));
+  const startSec = Math.max(0, parseFloat(req.query.start ?? "0"));
+
+  if (!url) return res.status(400).end();
+
+  const sid = ++streamSeq;
+  res.setHeader("Content-Type", "video/mp4");
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.setHeader("Cache-Control", "no-cache");
+
+  const cmd = ffmpeg(url)
+    .setStartTime(startSec)
+    .addOption("-map", "0:V:0")
+    .videoCodec("libx264")
+    .addOption("-preset", "ultrafast")
+    .addOption("-tune", "zerolatency")
+    .addOption("-avoid_negative_ts", "make_zero")
+    .addOption("-max_interleave_delta", "0")
+    .outputOptions(["-movflags", "frag_keyframe+empty_moov+default_base_moof"]);
+
+  if (audioIdx >= 0) {
+    cmd
+      .addOption("-map", `0:a:${audioIdx}`)
+      .audioCodec("aac")
+      .addOption("-b:a", "192k")
+      .addOption("-ac", "2")
+      .addOption("-ar", "48000");
+  } else {
+    cmd.addOption("-an");
+  }
+
+  cmd
+    .format("mp4")
+    .on("start", (cl) => console.log(`[url #${sid}] ${cl.slice(0, 250)}`))
+    .on("error", (err, _o, stderr) => {
+      if (err.message?.includes("SIGKILL")) return;
+      console.error(`[url #${sid}] Error: ${err.message}`);
+      if (stderr) console.error(`[url #${sid}] stderr:\n${stderr.slice(-500)}`);
+      if (!res.headersSent) res.status(500).end();
+      else res.end();
+      activeStreams.delete(sid);
+    })
+    .on("end", () => activeStreams.delete(sid));
+
+  const chunker = make1MBChunker();
+  activeStreams.set(sid, cmd);
+  req.on("close", () => {
+    try {
+      cmd.kill("SIGKILL");
+    } catch {}
     chunker.destroy();
     activeStreams.delete(sid);
   });
