@@ -10,8 +10,10 @@ ffmpeg.setFfprobePath(ffprobeBin);
 
 const { Transform } = require('stream');
 
+const CHUNK_SIZE = 10 ** 6; // 1 MB — fixed chunk size (matches original chunking logic)
+
 function make1MBChunker() {
-  const CHUNK = 1024 * 1024; // 1 MB
+  const CHUNK = CHUNK_SIZE; // use shared constant
   let buf = Buffer.alloc(0);
   return new Transform({
     transform(data, _, cb) {
@@ -64,15 +66,34 @@ app.post('/scan', (req, res) => {
     return res.status(404).json({ error: 'Directory not found: ' + dir });
   }
   try {
-    const files = fs.readdirSync(dir)
-      .filter(f => !f.startsWith('.') && VIDEO_EXTS.has(path.extname(f).toLowerCase()))
-      .map(f => {
+    // Directories (for folder navigation)
+    const allEntries = fs.readdirSync(dir);
+
+    const dirs = allEntries
+      .filter((f) => !f.startsWith("."))
+      .map((f) => {
+        try {
+          const full = path.join(dir, f);
+          return fs.statSync(full).isDirectory() ? { name: f, path: full } : null;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const files = allEntries
+      .filter(
+        (f) => !f.startsWith(".") && VIDEO_EXTS.has(path.extname(f).toLowerCase()),
+      )
+      .map((f) => {
         const full = path.join(dir, f);
-        const st   = fs.statSync(full);
+        const st = fs.statSync(full);
         return { name: f, path: full, size: st.size, modified: st.mtime.getTime() };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-    res.json({ dir, count: files.length, files });
+
+    res.json({ dir, count: files.length, files, dirs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -157,9 +178,8 @@ app.get('/stream', (req, res) => {
     const mime     = path.extname(fp).toLowerCase() === '.webm' ? 'video/webm' : 'video/mp4';
 
     if (range) {
-      const [s, e] = range.replace(/bytes=/, '').split('-');
-      const start  = parseInt(s, 10);
-      const end    = e ? parseInt(e, 10) : fileSize - 1;
+      const start = parseInt(range.replace(/bytes=/, '').split('-')[0], 10); // ← fixed parse
+      const end = Math.min(start + CHUNK_SIZE, fileSize - 1); // ← CHUNK_SIZE cap
       res.writeHead(206, {
         'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges':  'bytes',
