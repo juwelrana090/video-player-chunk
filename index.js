@@ -2,11 +2,37 @@ const express    = require('express');
 const path       = require('path');
 const fs         = require('fs');
 const ffmpeg     = require('fluent-ffmpeg');
-const ffmpegBin  = require('ffmpeg-static');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeBin = require('@ffprobe-installer/ffprobe').path;
 
-ffmpeg.setFfmpegPath(ffmpegBin);
-ffmpeg.setFfprobePath(ffprobeBin);
+// ── Startup validation ─────────────────────────────────────────────────────
+// @ffmpeg-installer bundles the binary directly — no post-install download.
+// Works with Bun, npm, pnpm, and yarn without any post-install script.
+(function validateBinaries() {
+  const ffmpegPath = ffmpegInstaller.path;
+  const ffprobePath = ffprobeBin;
+  const missing = [];
+
+  if (!ffmpegPath || !fs.existsSync(ffmpegPath))
+    missing.push("ffmpeg  → run: bun install (or npm install)");
+  if (!ffprobePath || !fs.existsSync(ffprobePath))
+    missing.push("ffprobe → run: bun install (or npm install)");
+
+  if (missing.length) {
+    console.error("\n❌  Missing binaries:");
+    missing.forEach((m) => console.error("    " + m));
+    console.error(
+      "\n    If already installed, delete node_modules/ and reinstall.\n",
+    );
+    process.exit(1);
+  }
+
+  console.log(`✅  ffmpeg  → ${ffmpegPath}`);
+  console.log(`✅  ffprobe → ${ffprobePath}`);
+
+  ffmpeg.setFfmpegPath(ffmpegPath);
+  ffmpeg.setFfprobePath(ffprobePath);
+})();
 
 const { Transform } = require('stream');
 
@@ -220,7 +246,10 @@ app.get('/thumb', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=86400');
   ffmpeg(fp).setStartTime(4).frames(1).size('320x?')
     .videoCodec('mjpeg').format('image2').outputOptions(['-q:v', '5'])
-    .on('error', () => res.status(500).end())
+    .on('error', (err) => {
+      console.warn(`[thumb] ${path.basename(fp)}: ${err.message.split('\n')[0]}`);
+      if (!res.headersSent) res.status(500).end(); else res.end();
+    })
     .pipe(res, { end: true });
 });
 
@@ -276,12 +305,18 @@ app.get('/stream', (req, res) => {
 
   const cmd = ffmpeg(fp)
     .setStartTime(startSec)
-    .addOption('-map', '0:V:0')               // FIX 9:  capital V skips cover-art
+    .addOption('-map', '0:V:0')
     .videoCodec('libx264')
     .addOption('-preset', 'ultrafast')
-    .addOption('-tune',   'zerolatency')
-    .addOption('-avoid_negative_ts', 'make_zero')  // FIX 11: fix audio after seek
-    .addOption('-max_interleave_delta', '0')        // FIX 12: prevent audio packet loss
+    .addOption('-tune', 'zerolatency')
+    // Fix odd-dimension videos (phone recordings, screen caps, many MKVs)
+    // libx264 requires width/height divisible by 2 — this rounds down silently
+    .addOption('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2')
+    // Force 8-bit YUV 4:2:0 — required for HDR, 10-bit, and unusual pixel formats
+    // Without this, HEVC HDR and NV12 files fail silently
+    .addOption('-pix_fmt', 'yuv420p')
+    .addOption('-avoid_negative_ts', 'make_zero')
+    .addOption('-max_interleave_delta', '0')
     .outputOptions(['-movflags', 'frag_keyframe+empty_moov+default_base_moof']);
 
   if (audioIdx >= 0) {
@@ -338,6 +373,8 @@ app.get("/stream-url", (req, res) => {
     .videoCodec("libx264")
     .addOption("-preset", "ultrafast")
     .addOption("-tune", "zerolatency")
+    .addOption("-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2")
+    .addOption("-pix_fmt", "yuv420p")
     .addOption("-avoid_negative_ts", "make_zero")
     .addOption("-max_interleave_delta", "0")
     .outputOptions(["-movflags", "frag_keyframe+empty_moov+default_base_moof"]);
